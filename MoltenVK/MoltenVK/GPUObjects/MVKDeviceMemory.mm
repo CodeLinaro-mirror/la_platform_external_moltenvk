@@ -294,6 +294,7 @@ MVKDeviceMemory::MVKDeviceMemory(MVKDevice* device,
 	VkImage dedicatedImage = VK_NULL_HANDLE;
 	VkBuffer dedicatedBuffer = VK_NULL_HANDLE;
 	VkExternalMemoryHandleTypeFlags handleTypes = 0;
+	bool usingBufferImport = false;
 	for (const auto* next = (const VkBaseInStructure*)pAllocateInfo->pNext; next; next = next->pNext) {
 		switch (next->sType) {
 			case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO: {
@@ -334,6 +335,7 @@ MVKDeviceMemory::MVKDeviceMemory(MVKDevice* device,
 				_mtlStorageMode = _mtlBuffer.storageMode;
 				_mtlCPUCacheMode = _mtlBuffer.cpuCacheMode;
 				_allocationSize = _mtlBuffer.length;
+				usingBufferImport = true;
 				break;
 			}
 			case VK_STRUCTURE_TYPE_EXPORT_METAL_OBJECT_CREATE_INFO_EXT: {
@@ -373,6 +375,11 @@ MVKDeviceMemory::MVKDeviceMemory(MVKDevice* device,
         for (auto& memoryBinding : ((MVKImage*)dedicatedImage)->_memoryBindings) {
             _imageMemoryBindings.push_back(memoryBinding);
         }
+		if (willExportMTLBuffer) {
+			if (!ensureMTLBuffer() ) {
+				setConfigurationResult(reportError(VK_ERROR_OUT_OF_DEVICE_MEMORY, "vkAllocateMemory(): Could not allocate a host-coherent or exportable VkDeviceMemory of size %llu bytes. The maximum memory-aligned size of a host-coherent VkDeviceMemory is %llu bytes.", _allocationSize, getMetalFeatures().maxMTLBufferSize));
+			}
+        }
 		return;
 	}
 
@@ -381,7 +388,7 @@ MVKDeviceMemory::MVKDeviceMemory(MVKDevice* device,
 	}
 
 	// If we can, create a MTLHeap. This should happen before creating the buffer, allowing us to map its contents.
-	if ( !_isDedicated ) {
+	if ( !_isDedicated && !usingBufferImport ) {
 		if (!ensureMTLHeap()) {
 			setConfigurationResult(reportError(VK_ERROR_OUT_OF_DEVICE_MEMORY, "vkAllocateMemory(): Could not allocate VkDeviceMemory of size %llu bytes.", _allocationSize));
 			return;
