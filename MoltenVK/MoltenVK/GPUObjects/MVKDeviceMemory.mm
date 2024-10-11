@@ -429,15 +429,8 @@ MVKDeviceMemory::~MVKDeviceMemory() {
     // to allow the resource to callback to remove itself from the collection.
     auto buffCopies = _buffers;
     for (auto& buf : buffCopies) { buf->bindDeviceMemory(nullptr, 0); }
-
-    // TODO(b/349066492): Temporarily solution to avoid crashes on instance cleanup due
-    // to invalid Vulkan usage on the emulator side for external memory handling.
-	// To be removed after integrating VK_EXT_external_memory_metal.
-	const bool safeToUnbindMemory = !_isDedicated;
-    if (safeToUnbindMemory) {
-        auto imgCopies = _imageMemoryBindings;
-        for (auto& img : imgCopies) { img->bindDeviceMemory(nullptr, 0); }
-    }
+	auto imgCopies = _imageMemoryBindings;
+	for (auto& img : imgCopies) { img->bindDeviceMemory(nullptr, 0); }
 
 	[_mtlBuffer release];
 	_mtlBuffer = nil;
