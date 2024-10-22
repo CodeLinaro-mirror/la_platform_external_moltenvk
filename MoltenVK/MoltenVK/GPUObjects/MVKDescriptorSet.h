@@ -129,7 +129,7 @@ protected:
 	void propagateDebugName() override {}
 	uint32_t getDescriptorCount(uint32_t variableDescriptorCount);
 	uint32_t getDescriptorIndex(uint32_t binding, uint32_t elementIndex = 0) { return getBinding(binding)->getDescriptorIndex(elementIndex); }
-	MVKDescriptorSetLayoutBinding* getBinding(uint32_t binding) { return &_bindings[_bindingToIndex[binding]]; }
+	MVKDescriptorSetLayoutBinding* getBinding(uint32_t binding, uint32_t bindingIndexOffset = 0);
 	uint32_t getBufferSizeBufferArgBuferIndex() { return 0; }
 	id <MTLArgumentEncoder> getMTLArgumentEncoder(uint32_t variableDescriptorCount);
 	uint64_t getMetal3ArgumentBufferEncodedLength(uint32_t variableDescriptorCount);
@@ -140,6 +140,7 @@ protected:
 	MVKShaderResourceBinding _mtlResourceCounts;
 	int32_t _maxBufferIndex = -1;
 	bool _isPushDescriptorLayout = false;
+	bool _canUseMetalArgumentBuffer = true;
 };
 
 
@@ -217,12 +218,13 @@ protected:
 	void setBufferSize(uint32_t descIdx, uint32_t value);
 
 	MVKDescriptorPool* _pool;
-	MVKDescriptorSetLayout* _layout;
+	MVKDescriptorSetLayout* _layout = nullptr;
+	MVKMTLBufferAllocation* _bufferSizesBuffer = nullptr;
 	MVKSmallVector<MVKDescriptor*> _descriptors;
 	MVKMetalArgumentBuffer _argumentBuffer;
-	MVKMTLBufferAllocation* _bufferSizesBuffer = nullptr;
-	uint32_t _dynamicOffsetDescriptorCount;
-	uint32_t _variableDescriptorCount;
+	uint32_t _dynamicOffsetDescriptorCount = 0;
+	uint32_t _variableDescriptorCount = 0;
+	bool _allDescriptorsAreFromPool = true;
 };
 
 
@@ -242,9 +244,11 @@ public:
 protected:
 	friend class MVKDescriptorPool;
 
-	VkResult allocateDescriptor(MVKDescriptor** pMVKDesc, MVKDescriptorPool* pool);
+	VkResult allocateDescriptor(VkDescriptorType descType, MVKDescriptor** pMVKDesc, bool& dynamicAllocation, MVKDescriptorPool* pool);
 	void freeDescriptor(MVKDescriptor* mvkDesc, MVKDescriptorPool* pool);
 	void reset();
+	size_t size() { return _availability.size(); }
+	size_t getRemainingDescriptorCount();
 
 	MVKSmallVector<DescriptorClass> _descriptors;
 	MVKBitArray _availability;
@@ -286,7 +290,7 @@ protected:
 	void propagateDebugName() override {}
 	VkResult allocateDescriptorSet(MVKDescriptorSetLayout* mvkDSL, uint32_t variableDescriptorCount, VkDescriptorSet* pVKDS);
 	void freeDescriptorSet(MVKDescriptorSet* mvkDS, bool isPoolReset);
-	VkResult allocateDescriptor(VkDescriptorType descriptorType, MVKDescriptor** pMVKDesc);
+	VkResult allocateDescriptor(VkDescriptorType descriptorType, MVKDescriptor** pMVKDesc, bool& dynamicAllocation);
 	void freeDescriptor(MVKDescriptor* mvkDesc);
 	void initMetalArgumentBuffer(const VkDescriptorPoolCreateInfo* pCreateInfo);
 	NSUInteger getMetalArgumentBufferEncodedResourceStorageSize(NSUInteger bufferCount, NSUInteger textureCount, NSUInteger samplerCount);
@@ -294,7 +298,6 @@ protected:
 	size_t getPoolSize(const VkDescriptorPoolCreateInfo* pCreateInfo, VkDescriptorType descriptorType);
 	std::string getLogDescription();
 
-    bool _hasPooledDescriptors;
 	MVKSmallVector<MVKDescriptorSet> _descriptorSets;
 	MVKBitArray _descriptorSetAvailablility;
 	id<MTLBuffer> _metalArgumentBuffer;

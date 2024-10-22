@@ -93,6 +93,37 @@ static constexpr VkExtent2D kMVKSampleLocationPixelGridSizeNotSupported = { 0, 0
 typedef NSUInteger MTLTimestamp;
 #endif
 
+
+#pragma mark -
+#pragma mark MVKMTLDeviceCapabilities
+
+typedef struct MVKMTLDeviceCapabilities {
+	bool supportsApple1;
+	bool supportsApple2;
+	bool supportsApple3;
+	bool supportsApple4;
+	bool supportsApple5;
+	bool supportsApple6;
+	bool supportsApple7;
+	bool supportsApple8;
+	bool supportsApple9;
+	bool supportsMac1;
+	bool supportsMac2;
+	bool supportsMetal3;
+
+	bool isAppleGPU;
+	bool supportsBCTextureCompression;
+	bool supportsDepth24Stencil8;
+	bool supports32BitFloatFiltering;
+	bool supports32BitMSAA;
+
+	uint8_t getHighestAppleGPU() const;
+	uint8_t getHighestMacGPU() const;
+
+	MVKMTLDeviceCapabilities(id<MTLDevice> mtlDev);
+} MVKMTLDeviceCapabilities;
+
+
 #pragma mark -
 #pragma mark MVKPhysicalDevice
 
@@ -305,37 +336,39 @@ public:
 	 * Returns a bit mask of all memory type indices. 
 	 * Each bit [0..31] in the returned bit mask indicates a distinct memory type.
 	 */
-	uint32_t getAllMemoryTypes() { return _allMemoryTypes; }
+	uint32_t getAllMemoryTypes() const { return _allMemoryTypes; }
 
 	/**
 	 * Returns a bit mask of all memory type indices that allow host visibility to the memory. 
 	 * Each bit [0..31] in the returned bit mask indicates a distinct memory type.
 	 */
-	uint32_t getHostVisibleMemoryTypes() { return _hostVisibleMemoryTypes; }
+	uint32_t getHostVisibleMemoryTypes() const { return _hostVisibleMemoryTypes; }
 
 	/**
 	 * Returns a bit mask of all memory type indices that are coherent between host and device.
 	 * Each bit [0..31] in the returned bit mask indicates a distinct memory type.
 	 */
-	uint32_t getHostCoherentMemoryTypes() { return _hostCoherentMemoryTypes; }
+	uint32_t getHostCoherentMemoryTypes() const { return _hostCoherentMemoryTypes; }
 
 	/**
 	 * Returns a bit mask of all memory type indices that do NOT allow host visibility to the memory.
 	 * Each bit [0..31] in the returned bit mask indicates a distinct memory type.
 	 */
-	uint32_t getPrivateMemoryTypes() { return _privateMemoryTypes; }
+	uint32_t getPrivateMemoryTypes() const { return _privateMemoryTypes; }
 
 	/**
 	 * Returns a bit mask of all memory type indices that are lazily allocated.
 	 * Each bit [0..31] in the returned bit mask indicates a distinct memory type.
 	 */
-	uint32_t getLazilyAllocatedMemoryTypes() { return _lazilyAllocatedMemoryTypes; }
+	uint32_t getLazilyAllocatedMemoryTypes() const { return _lazilyAllocatedMemoryTypes; }
 
 	/** Returns the external memory properties supported for buffers for the handle type. */
 	VkExternalMemoryProperties& getExternalBufferProperties(VkExternalMemoryHandleTypeFlagBits handleType);
 
 	/** Returns the external memory properties supported for images for the handle type. */
-	VkExternalMemoryProperties& getExternalImageProperties(VkExternalMemoryHandleTypeFlagBits handleType);
+	VkExternalMemoryProperties& getExternalImageProperties(VkFormat format, VkExternalMemoryHandleTypeFlagBits handleType);
+
+	uint32_t getExternalResourceMemoryTypeBits(VkExternalMemoryHandleTypeFlagBits handleType, void* handle) const;
 
 	
 #pragma mark Metal
@@ -354,6 +387,9 @@ public:
 
 	/** Returns the MTLStorageMode that matches the Vulkan memory property flags. */
 	MTLStorageMode getMTLStorageModeFromVkMemoryPropertyFlags(VkMemoryPropertyFlags vkFlags);
+
+	/** Returns the MTLDevice capabilities. */
+	const MVKMTLDeviceCapabilities getMTLDeviceCapabilities() { return _gpuCapabilities; }
 
 
 #pragma mark Construction
@@ -413,9 +449,11 @@ protected:
 	void populateHostImageCopyProperties(VkPhysicalDeviceHostImageCopyPropertiesEXT* pHostImageCopyProps);
 	void logGPUInfo();
 
-	id<MTLDevice> _mtlDevice;
 	MVKInstance* _mvkInstance;
+	id<MTLDevice> _mtlDevice;
+	const MVKMTLDeviceCapabilities _gpuCapabilities;
 	const MVKExtensionList _supportedExtensions;
+	MVKPixelFormats _pixelFormats;
 	VkPhysicalDeviceFeatures _features;
 	MVKPhysicalDeviceVulkan12FeaturesNoExt _vulkan12FeaturesNoExt;
 	MVKPhysicalDeviceMetalFeatures _metalFeatures;
@@ -423,10 +461,10 @@ protected:
 	VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT _texelBuffAlignProperties;
 	VkPhysicalDeviceMemoryProperties _memoryProperties;
 	MVKSmallVector<MVKQueueFamily*, kMVKQueueFamilyCount> _queueFamilies;
-	MVKPixelFormats _pixelFormats;
 	VkExternalMemoryProperties _hostPointerExternalMemoryProperties;
 	VkExternalMemoryProperties _mtlBufferExternalMemoryProperties;
 	VkExternalMemoryProperties _mtlTextureExternalMemoryProperties;
+	VkExternalMemoryProperties _mtlTextureHeapExternalMemoryProperties;
 	id<MTLCounterSet> _timestampMTLCounterSet;
 	MVKSemaphoreStyle _vkSemaphoreStyle;
 	MTLTimestamp _prevCPUTimestamp = 0;
@@ -437,8 +475,7 @@ protected:
 	uint32_t _privateMemoryTypes;
 	uint32_t _lazilyAllocatedMemoryTypes;
 	bool _hasUnifiedMemory = true;
-	bool _isAppleGPU = true;
-	bool _isUsingMetalArgumentBuffers = false;
+	bool _isUsingMetalArgumentBuffers = true;
 };
 
 
@@ -468,6 +505,8 @@ public:
 
 	/** Returns a pointer to the Vulkan instance. */
 	MVKInstance* getInstance() override { return _physicalDevice->_mvkInstance; }
+
+	const MVKPhysicalDevice* getPhysicalDevice() const { return _physicalDevice; }
 
 	/** Returns the name of this device. */
 	const char* getName() { return _physicalDevice->_properties.deviceName; }
@@ -783,6 +822,8 @@ public:
 	/** Returns the Metal objects underpinning the Vulkan objects indicated in the pNext chain of pMetalObjectsInfo. */
 	void getMetalObjects(VkExportMetalObjectsInfoEXT* pMetalObjectsInfo);
 
+	void* getResourceIdFromHandle(const VkMemoryGetMetalHandleInfoEXT* pGetMetalHandleInfo) const;
+
 
 #pragma mark Construction
 
@@ -896,7 +937,7 @@ public:
 	bool isUnifiedMemoryGPU() { return _device->_physicalDevice->_hasUnifiedMemory; }
 
 	/** Returns whether the GPU is Apple Silicon. */
-	bool isAppleGPU() { return _device->_physicalDevice->_isAppleGPU; }
+	bool isAppleGPU() { return _device->_physicalDevice->_gpuCapabilities.isAppleGPU; }
 
 	/** Returns whether this device is using one Metal argument buffer for each descriptor set, on multiple pipeline and pipeline stages. */
 	virtual bool isUsingMetalArgumentBuffers() { return _device->_physicalDevice->_isUsingMetalArgumentBuffers; };
@@ -1068,16 +1109,3 @@ uint64_t mvkGetRegistryID(id<MTLDevice> mtlDevice);
  * the returned value will be zero.
  */
 uint64_t mvkGetLocationID(id<MTLDevice> mtlDevice);
-
-/** Returns whether the MTLDevice supports BC texture compression. */
-bool mvkSupportsBCTextureCompression(id<MTLDevice> mtlDevice);
-
-/** Redefinitions because Mac Catalyst doesn't support feature sets. */
-#if MVK_MACCAT
-#define MTLFeatureSet_macOS_GPUFamily1_v1		MTLGPUFamilyMacCatalyst1
-#define MTLFeatureSet_macOS_GPUFamily1_v2		MTLGPUFamilyMacCatalyst1
-#define MTLFeatureSet_macOS_GPUFamily1_v3		MTLGPUFamilyMacCatalyst1
-#define MTLFeatureSet_macOS_GPUFamily1_v4		MTLGPUFamilyMacCatalyst1
-
-#define MTLFeatureSet_macOS_GPUFamily2_v1		MTLGPUFamilyMacCatalyst2
-#endif

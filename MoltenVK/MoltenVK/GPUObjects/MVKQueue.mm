@@ -85,7 +85,16 @@ VkResult MVKQueue::submit(MVKQueueSubmission* qSubmit) {
 	// The submissions will ensure a misconfiguration will be safe to execute.
 	VkResult rslt = qSubmit->getConfigurationResult();
 	if (_execQueue) {
-		dispatch_async(_execQueue, ^{ execute(qSubmit); } );
+		std::unique_lock lock(_execQueueMutex);
+		_execQueueJobCount++;
+
+		dispatch_async(_execQueue, ^{
+			execute(qSubmit);
+
+			std::unique_lock execLock(_execQueueMutex);
+			if (!--_execQueueJobCount)
+				_execQueueConditionVariable.notify_all();
+		} );
 	} else {
 		rslt = execute(qSubmit);
 	}
@@ -144,6 +153,12 @@ VkResult MVKQueue::waitIdle(MVKCommandUse cmdUse) {
 
 	VkResult rslt = _device->getConfigurationResult();
 	if (rslt != VK_SUCCESS) { return rslt; }
+
+	if (_execQueue) {
+		std::unique_lock lock(_execQueueMutex);
+		while (_execQueueJobCount)
+			_execQueueConditionVariable.wait(lock);
+	}
 
 	@autoreleasepool {
 		auto* mtlCmdBuff = getMTLCommandBuffer(cmdUse);
@@ -771,7 +786,7 @@ MVKQueuePresentSurfaceSubmission::MVKQueuePresentSurfaceSubmission(MVKQueue* que
 	// Populate the array of swapchain images, testing each one for status
 	uint32_t scCnt = pPresentInfo->swapchainCount;
 	const VkPresentTimeGOOGLE* pPresentTimes = nullptr;
-	if (pPresentTimesInfo && pPresentTimesInfo->pTimes) {
+	if (pPresentTimesInfo) {
 		pPresentTimes = pPresentTimesInfo->pTimes;
 		MVKAssert(pPresentTimesInfo->swapchainCount == scCnt, "VkPresentTimesInfoGOOGLE swapchainCount must match VkPresentInfo swapchainCount.");
 	}
@@ -800,7 +815,6 @@ MVKQueuePresentSurfaceSubmission::MVKQueuePresentSurfaceSubmission(MVKQueue* que
 		presentInfo.presentMode = pPresentModes ? pPresentModes[scIdx] : VK_PRESENT_MODE_MAX_ENUM_KHR;
 		presentInfo.fence = pFences ? (MVKFence*)pFences[scIdx] : nullptr;
 		if (pPresentTimes) {
-			presentInfo.hasPresentTime = true;
 			presentInfo.presentID = pPresentTimes[scIdx].presentID;
 			presentInfo.desiredPresentTime = pPresentTimes[scIdx].desiredPresentTime;
 		}
