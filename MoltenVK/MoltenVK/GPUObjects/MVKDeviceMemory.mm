@@ -394,6 +394,13 @@ MVKDeviceMemory::MVKDeviceMemory(MVKDevice* device,
 #endif
         for (auto& memoryBinding : dedicatedImage->_memoryBindings) {
             _imageMemoryBindings.push_back(memoryBinding);
+            if (dedicatedImage->_device != this->_device) {
+				// TODO(b/351765838): We workaround some guest side bugs by sharing dedicated
+				// images directly from a parent vulkan device for external images, which
+				// is not a valid usage of Vulkan and causes issues when the device memory
+				// tries to remove the image memory binding from a foreign device.
+                _hasForeignBindings = true;
+            }
         }
 		if (willExportMTLBuffer) {
 			if (!ensureMTLBuffer() ) {
@@ -471,7 +478,11 @@ MVKDeviceMemory::~MVKDeviceMemory() {
     auto buffCopies = _buffers;
     for (auto& buf : buffCopies) { buf->bindDeviceMemory(nullptr, 0); }
 	auto imgCopies = _imageMemoryBindings;
-	for (auto& img : imgCopies) { img->bindDeviceMemory(nullptr, 0); }
+    for (auto& img : imgCopies) {
+		if (!_hasForeignBindings) {
+            img->bindDeviceMemory(nullptr, 0);
+        }
+    }
 
 	if (_externalMemoryHandleType & VK_EXTERNAL_MEMORY_HANDLE_TYPE_MTLTEXTURE_BIT_EXT) {
 		[_mtlTexture release];
