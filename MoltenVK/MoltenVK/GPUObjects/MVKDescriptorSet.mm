@@ -932,7 +932,10 @@ size_t MVKDescriptorPool::getPoolSize(const VkDescriptorPoolCreateInfo* pCreateI
 
 std::string MVKDescriptorPool::getLogDescription() {
 #define STR(name) #name
-#define printDescCnt(descType, spacing, descPool)  descStr << "\n\t" STR(VK_DESCRIPTOR_TYPE_##descType) ": " spacing << _##descPool##Descriptors.size() << "  (" << _##descPool##Descriptors.getRemainingDescriptorCount() << " remaining)";
+#define printDescCnt(descType, spacing, descPool)  \
+	if (_##descPool##Descriptors.size()) {  \
+		descStr << "\n\t" STR(VK_DESCRIPTOR_TYPE_##descType) ": " spacing << _##descPool##Descriptors.size()  \
+		<< "  (" << _##descPool##Descriptors.getRemainingDescriptorCount() << " remaining)"; }
 
 	std::stringstream descStr;
 	descStr << "VkDescriptorPool " << this << " with " << _descriptorSetAvailablility.size() << " descriptor sets, and pooled descriptors:";
@@ -1075,7 +1078,7 @@ void MVKDescriptorPool::initMetalArgumentBuffer(const VkDescriptorPoolCreateInfo
 				metalArgBuffSize = maxMTLBuffSize;
 			}
 			_metalArgumentBuffer = [getMTLDevice() newBufferWithLength: metalArgBuffSize options: MTLResourceStorageModeShared];	// retained
-			_metalArgumentBuffer.label = @"Descriptor set argument buffer";
+			setMetalObjectLabel(_metalArgumentBuffer, @"Descriptor set argument buffer");
 		}
 	}
 }
@@ -1139,10 +1142,45 @@ VkDescriptorUpdateTemplateType MVKDescriptorUpdateTemplate::getType() const {
 
 MVKDescriptorUpdateTemplate::MVKDescriptorUpdateTemplate(MVKDevice* device,
 														 const VkDescriptorUpdateTemplateCreateInfo* pCreateInfo) :
-	MVKVulkanAPIDeviceObject(device), _pipelineBindPoint(pCreateInfo->pipelineBindPoint), _type(pCreateInfo->templateType) {
+MVKVulkanAPIDeviceObject(device), _pipelineBindPoint(pCreateInfo->pipelineBindPoint), _type(pCreateInfo->templateType) {
 
-	for (uint32_t i = 0; i < pCreateInfo->descriptorUpdateEntryCount; i++)
-		_entries.push_back(pCreateInfo->pDescriptorUpdateEntries[i]);
+	for (uint32_t i = 0; i < pCreateInfo->descriptorUpdateEntryCount; i++) {
+		const auto& entry = pCreateInfo->pDescriptorUpdateEntries[i];
+		_entries.push_back(entry);
+
+		// Accumulate the size of the template. If we were given a stride, use that;
+		// otherwise, assume only one info struct of the appropriate type.
+		size_t entryEnd = entry.offset;
+		if (entry.stride) {
+			entryEnd += entry.stride * entry.descriptorCount;
+		} else {
+			switch (entry.descriptorType) {
+				case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+				case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+				case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+				case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+					entryEnd += sizeof(VkDescriptorBufferInfo);
+					break;
+
+				case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+				case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+				case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+				case VK_DESCRIPTOR_TYPE_SAMPLER:
+				case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+					entryEnd += sizeof(VkDescriptorImageInfo);
+					break;
+
+				case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
+				case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:
+					entryEnd += sizeof(VkBufferView);
+					break;
+
+				default:
+					break;
+			}
+		}
+		_size = std::max(_size, entryEnd);
+	}
 }
 
 
