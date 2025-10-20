@@ -188,6 +188,5 @@ protected:
 	bool _isDedicated = false;
 	bool _isHostMemImported = false;
 	VkExternalMemoryHandleTypeFlags _externalMemoryHandleType = 0u;
-    bool _hasForeignBindings = false; //TODO(b/351765838): to be removed after fixing guest side dedicated image handling errors
 };
 

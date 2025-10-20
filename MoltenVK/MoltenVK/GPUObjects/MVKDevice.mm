@@ -4262,9 +4262,7 @@ MVKEvent* MVKDevice::createEvent(const VkEventCreateInfo* pCreateInfo,
 		}
 	}
 
-	// TODO(b/362799209): Avoid getting encoder errors and crashes when MTLEvents are used
-	const bool enableNativeEvents = false;
-	if (enableNativeEvents && _physicalDevice->_metalFeatures.events) {
+	if (_physicalDevice->_metalFeatures.events) {
 		return new MVKEventNative(this, pCreateInfo, pExportInfo, pImportInfo);
 	} else {
 		return new MVKEventEmulated(this, pCreateInfo, pExportInfo, pImportInfo);
