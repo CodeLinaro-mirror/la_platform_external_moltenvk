@@ -1,7 +1,7 @@
 /*
  * MVKBuffer.mm
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ VkResult MVKBuffer::getMemoryRequirements(VkMemoryRequirements* pMemoryRequireme
 	return VK_SUCCESS;
 }
 
-VkResult MVKBuffer::getMemoryRequirements(const void*, VkMemoryRequirements2* pMemoryRequirements) {
+VkResult MVKBuffer::getMemoryRequirements(VkMemoryRequirements2* pMemoryRequirements) {
 	pMemoryRequirements->sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
 	getMemoryRequirements(&pMemoryRequirements->memoryRequirements);
 	for (auto* next = (VkBaseOutStructure*)pMemoryRequirements->pNext; next; next = next->pNext) {
@@ -96,7 +96,19 @@ VkResult MVKBuffer::bindDeviceMemory(MVKDeviceMemory* mvkMem, VkDeviceSize memOf
 }
 
 VkResult MVKBuffer::bindDeviceMemory2(const VkBindBufferMemoryInfo* pBindInfo) {
-	return bindDeviceMemory((MVKDeviceMemory*)pBindInfo->memory, pBindInfo->memoryOffset);
+	VkResult res = bindDeviceMemory((MVKDeviceMemory*)pBindInfo->memory, pBindInfo->memoryOffset);
+	for (const auto* next = (const VkBaseInStructure*)pBindInfo->pNext; next; next = next->pNext) {
+		switch (next->sType) {
+			case VK_STRUCTURE_TYPE_BIND_MEMORY_STATUS: {
+				auto* pBindMemoryStatus = (const VkBindMemoryStatus*)next;
+				*(pBindMemoryStatus->pResult) = res;
+				break;
+			}
+			default:
+				break;
+		}
+	}
+	return res;
 }
 
 void MVKBuffer::applyMemoryBarrier(MVKPipelineBarrier& barrier,
@@ -185,6 +197,7 @@ id<MTLBuffer> MVKBuffer::getMTLBuffer() {
 			_mtlBuffer = [_deviceMemory->getMTLHeap() newBufferWithLength: getByteCount()
 																  options: _deviceMemory->getMTLResourceOptions()
 																   offset: _deviceMemoryOffset];	// retained
+			getDevice()->makeResident(_mtlBuffer);
 			propagateDebugName();
 			return _mtlBuffer;
 		} else {
@@ -202,6 +215,7 @@ id<MTLBuffer> MVKBuffer::getMTLBufferCache() {
 
 		_mtlBufferCache = [getMTLDevice() newBufferWithLength: getByteCount()
 													  options: MTLResourceStorageModeManaged];    // retained
+		getDevice()->makeResident(_mtlBufferCache);
         flushToDevice(_deviceMemoryOffset, _byteCount);
     }
 #endif
@@ -272,8 +286,10 @@ void MVKBuffer::destroy() {
 void MVKBuffer::detachMemory() {
 	if (_deviceMemory) { _deviceMemory->removeBuffer(this); }
 	_deviceMemory = nullptr;
+	if (_mtlBuffer) getDevice()->removeResidency(_mtlBuffer);
 	[_mtlBuffer release];
 	_mtlBuffer = nil;
+	if (_mtlBufferCache) getDevice()->removeResidency(_mtlBufferCache);
 	[_mtlBufferCache release];
 	_mtlBufferCache = nil;
 }
@@ -300,7 +316,7 @@ id<MTLTexture> MVKBufferView::getMTLTexture() {
         if ( mvkIsAnyFlagEnabled(_buffer->getUsage(), VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) ) {
 			usage |= MTLTextureUsageShaderWrite;
 #if MVK_XCODE_15
-			if (getMetalFeatures().nativeTextureAtomics && (_mtlPixelFormat == MTLPixelFormatR32Sint || _mtlPixelFormat == MTLPixelFormatR32Uint || _mtlPixelFormat == MTLPixelFormatRG32Uint))
+			if (getMetalFeatures().nativeTextureAtomics && (_mtlPixelFormat == MTLPixelFormatR32Sint || _mtlPixelFormat == MTLPixelFormatR32Uint))
 				usage |= MTLTextureUsageShaderAtomic;
 #endif
         }
@@ -331,6 +347,7 @@ id<MTLTexture> MVKBufferView::getMTLTexture() {
 		_mtlTexture = [mtlBuff newTextureWithDescriptor: mtlTexDesc
 												 offset: mtlBuffOffset
 											bytesPerRow: _mtlBytesPerRow];
+		getDevice()->makeResident(_mtlTexture);
 		propagateDebugName();
     }
     return _mtlTexture;
@@ -394,6 +411,7 @@ void MVKBufferView::destroy() {
 
 // Potentially called twice, from destroy() and destructor, so ensure everything is nulled out.
 void MVKBufferView::detachMemory() {
+	if (_mtlTexture) getDevice()->removeResidency(_mtlTexture);
 	[_mtlTexture release];
 	_mtlTexture = nil;
 }

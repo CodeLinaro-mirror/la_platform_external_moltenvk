@@ -1,7 +1,7 @@
 /*
  * MVKCmdPipeline.mm
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,6 +77,35 @@ VkResult MVKCmdPipelineBarrier<N>::setContent(MVKCommandBuffer* cmdBuff,
 	}
 
 	return VK_SUCCESS;
+}
+
+static uint64_t mvkPipelineStageFlagsToBarrierStages(VkPipelineStageFlags2 flags) {
+	uint64_t result = 0;
+
+	if (mvkIsAnyFlagEnabled(flags, VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT | VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT |
+							VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT |
+							VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+							VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT | VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT | VK_PIPELINE_STAGE_2_TRANSFORM_FEEDBACK_BIT_EXT |
+							VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT))
+		result |= 1 << kMVKBarrierStageVertex;
+
+	if (mvkIsAnyFlagEnabled(flags, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT |
+							VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT |
+							VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR | VK_PIPELINE_STAGE_2_FRAGMENT_DENSITY_PROCESS_BIT_EXT |
+							VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT))
+		result |= 1 << kMVKBarrierStageFragment;
+
+	if (mvkIsAnyFlagEnabled(flags, VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT |
+							VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT))
+		result |= 1 << kMVKBarrierStageCompute;
+
+	if (mvkIsAnyFlagEnabled(flags, VK_PIPELINE_STAGE_2_BLIT_BIT | VK_PIPELINE_STAGE_2_COPY_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT |
+							VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT | VK_PIPELINE_STAGE_2_RESOLVE_BIT |
+							VK_PIPELINE_STAGE_2_CLEAR_BIT | VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR | VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT |
+							VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT))
+		result |= 1 << kMVKBarrierStageCopy;
+
+	return result;
 }
 
 template <size_t N>
@@ -156,6 +185,15 @@ void MVKCmdPipelineBarrier<N>::encode(MVKCommandEncoder* cmdEncoder) {
 		}
 	}
 #endif
+
+	if (!cmdEncoder->_mtlRenderEncoder && cmdEncoder->isUsingMetalArgumentBuffers() && cmdEncoder->getDevice()->hasResidencySet()) {
+		cmdEncoder->endCurrentMetalEncoding();
+
+		for (auto& b : _barriers) {
+			uint64_t sourceStageMask = mvkPipelineStageFlagsToBarrierStages(b.srcStageMask), destStageMask = mvkPipelineStageFlagsToBarrierStages(b.dstStageMask);
+			cmdEncoder->setBarrier(sourceStageMask, destStageMask);
+		}
+	}
 
 	// Apple GPUs do not support renderpass barriers, and do not support rendering/writing
 	// to an attachment and then reading from that attachment within a single renderpass.
@@ -390,7 +428,6 @@ VkResult MVKCmdPushDescriptorSet::setContent(MVKCommandBuffer* cmdBuff,
 	_pipelineLayout->retain();
 
 	// Add the descriptor writes
-	auto& enabledExtns = cmdBuff->getEnabledExtensions();
 	clearDescriptorWrites();	// Clear for reuse
 	_descriptorWrites.reserve(descriptorWriteCount);
 	for (uint32_t dwIdx = 0; dwIdx < descriptorWriteCount; dwIdx++) {
@@ -412,24 +449,22 @@ VkResult MVKCmdPushDescriptorSet::setContent(MVKCommandBuffer* cmdBuff,
 			std::copy_n(descWrite.pTexelBufferView, descWrite.descriptorCount, pNewTexelBufferView);
 			descWrite.pTexelBufferView = pNewTexelBufferView;
 		}
-        if (enabledExtns.vk_EXT_inline_uniform_block.enabled) {
-            const VkWriteDescriptorSetInlineUniformBlockEXT* pInlineUniformBlock = nullptr;
-			for (const auto* next = (VkBaseInStructure*)descWrite.pNext; next; next = next->pNext) {
-                switch (next->sType) {
-                case VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK_EXT: {
-                    pInlineUniformBlock = (VkWriteDescriptorSetInlineUniformBlockEXT*)next;
-                    break;
-                }
-                default:
-                    break;
-                }
-            }
-            if (pInlineUniformBlock) {
-                auto *pNewInlineUniformBlock = new VkWriteDescriptorSetInlineUniformBlockEXT(*pInlineUniformBlock);
-                pNewInlineUniformBlock->pNext = nullptr; // clear pNext just in case, no other extensions are supported at this time
-                descWrite.pNext = pNewInlineUniformBlock;
-            }
-        }
+		const VkWriteDescriptorSetInlineUniformBlock* pInlineUniformBlock = nullptr;
+		for (const auto* next = (VkBaseInStructure*)descWrite.pNext; next; next = next->pNext) {
+			switch (next->sType) {
+				case VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK: {
+					pInlineUniformBlock = (VkWriteDescriptorSetInlineUniformBlock*)next;
+					break;
+				}
+				default:
+					break;
+			}
+		}
+		if (pInlineUniformBlock) {
+			auto *pNewInlineUniformBlock = new VkWriteDescriptorSetInlineUniformBlock(*pInlineUniformBlock);
+			pNewInlineUniformBlock->pNext = nullptr; // clear pNext just in case, no other extensions are supported at this time
+			descWrite.pNext = pNewInlineUniformBlock;
+		}
 	}
 
 	// Validate by encoding on a null encoder
@@ -452,11 +487,11 @@ void MVKCmdPushDescriptorSet::clearDescriptorWrites() {
 		if (descWrite.pBufferInfo) { delete[] descWrite.pBufferInfo; }
 		if (descWrite.pTexelBufferView) { delete[] descWrite.pTexelBufferView; }
 
-		const VkWriteDescriptorSetInlineUniformBlockEXT* pInlineUniformBlock = nullptr;
+		const VkWriteDescriptorSetInlineUniformBlock* pInlineUniformBlock = nullptr;
 		for (const auto* next = (VkBaseInStructure*)descWrite.pNext; next; next = next->pNext) {
 			switch (next->sType) {
-				case VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK_EXT: {
-					pInlineUniformBlock = (VkWriteDescriptorSetInlineUniformBlockEXT*)next;
+				case VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK: {
+					pInlineUniformBlock = (VkWriteDescriptorSetInlineUniformBlock*)next;
 					break;
 				}
 				default:
@@ -588,6 +623,7 @@ VkResult MVKCmdWaitEvents<N>::setContent(MVKCommandBuffer* cmdBuff,
 
 template <size_t N>
 void MVKCmdWaitEvents<N>::encode(MVKCommandEncoder* cmdEncoder) {
+	cmdEncoder->endCurrentMetalEncoding();
 	for (MVKEvent* mvkEvt : _mvkEvents) {
 		mvkEvt->encodeWait(cmdEncoder->_mtlCmdBuffer);
 	}

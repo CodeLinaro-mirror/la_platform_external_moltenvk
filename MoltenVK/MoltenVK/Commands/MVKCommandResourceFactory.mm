@@ -1,7 +1,7 @@
 /*
  * MVKCommandResourceFactory.mm
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -614,6 +614,10 @@ id<MTLComputePipelineState> MVKCommandResourceFactory::newAccumulateOcclusionQue
 	return newMTLComputePipelineState("accumulateOcclusionQueryResults", owner);
 }
 
+id<MTLComputePipelineState> MVKCommandResourceFactory::newConvertUint8IndicesMTLComputePipelineState(MVKVulkanAPIDeviceObject* owner) {
+	return newMTLComputePipelineState("convertUint8Indices", owner);
+}
+
 
 #pragma mark Support methods
 
@@ -666,9 +670,14 @@ id<MTLRenderPipelineState> MVKCommandResourceFactory::newMTLRenderPipelineState(
 id<MTLComputePipelineState> MVKCommandResourceFactory::newMTLComputePipelineState(const char* funcName,
 																				  MVKVulkanAPIDeviceObject* owner) {
 	id<MTLFunction> mtlFunc = newFunctionNamed(funcName);							// temp retain
+	// Providing a function directly may cause issues with Metal shader validation layer object
+	// management for some reason, so create a temporary pipeline descriptor to provide instead.
+	MTLComputePipelineDescriptor* plDesc = [MTLComputePipelineDescriptor new];		// temp retain
+	plDesc.computeFunction = mtlFunc;
 	MVKComputePipelineCompiler* plc = new MVKComputePipelineCompiler(owner);
-	id<MTLComputePipelineState> cps = plc->newMTLComputePipelineState(mtlFunc);		// retained
+	id<MTLComputePipelineState> cps = plc->newMTLComputePipelineState(plDesc);		// retained
 	plc->destroy();
+	[plDesc release];																// temp release
 	[mtlFunc release];																// temp release
     return cps;
 }

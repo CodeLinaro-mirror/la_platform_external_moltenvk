@@ -1,7 +1,7 @@
 /*
  * MVKMTLBufferAllocation.mm
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,6 +46,7 @@ MVKMTLBufferAllocation* MVKMTLBufferAllocationPool::newObject() {
 void MVKMTLBufferAllocationPool::addMTLBuffer() {
     MTLResourceOptions mbOpts = (_mtlStorageMode << MTLResourceStorageModeShift) | MTLResourceCPUCacheModeDefaultCache;
     _mtlBuffers.push_back({ [getMTLDevice() newBufferWithLength: _mtlBufferLength options: mbOpts], 0 });
+	getDevice()->makeResident(_mtlBuffers.back().mtlBuffer);
     _nextOffset = 0;
 }
 
@@ -106,6 +107,7 @@ uint32_t MVKMTLBufferAllocationPool::calcMTLBufferAllocationCount() {
 
 MVKMTLBufferAllocationPool::~MVKMTLBufferAllocationPool() {
     for (uint32_t bufferIndex = 0; bufferIndex < _mtlBuffers.size(); ++bufferIndex) {
+		getDevice()->removeResidency(_mtlBuffers[bufferIndex].mtlBuffer);
         [_mtlBuffers[bufferIndex].mtlBuffer release];
     }
     _mtlBuffers.clear();

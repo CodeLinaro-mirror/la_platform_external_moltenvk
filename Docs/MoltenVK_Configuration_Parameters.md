@@ -7,7 +7,7 @@
 MoltenVK Configuration Parameters
 =================================
 
-Copyright (c) 2015-2024 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
+Copyright (c) 2015-2025 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 
 [comment]: # "This document is written in Markdown (http://en.wikipedia.org/wiki/Markdown) format."
 [comment]: # "For best results, use a Markdown reader."
@@ -85,17 +85,27 @@ extensions will be advertised. A value of zero means no extensions will be adver
 #### MVK_CONFIG_API_VERSION_TO_ADVERTISE
 
 ##### Type: UInt32
-##### Default: `4202496`
+##### Default: `4206592` (decimal number for `VK_API_VERSION_1_3`)
 
 Controls the _Vulkan_ API version that **MoltenVK** should advertise in `vkEnumerateInstanceVersion()`,
 after **MoltenVK** adds the `VK_HEADER_VERSION` component.
 
 Set this value to one of:
 
-- `4202496` (decimal number for `VK_API_VERSION_1_2`)
-- `4198400` (decimal number for `VK_API_VERSION_1_1`)
-- `4194304` (decimal number for `VK_API_VERSION_1_0`)
+- `4206592`  (decimal number for `VK_API_VERSION_1_3`)
+- `4202496`  (decimal number for `VK_API_VERSION_1_2`)
+- `4198400`  (decimal number for `VK_API_VERSION_1_1`)
+- `4194304`  (decimal number for `VK_API_VERSION_1_0`)
 
+or one of the shorthand versions:
+
+- `13`  (`VK_API_VERSION_1_3`)
+- `12`  (`VK_API_VERSION_1_2`)
+- `11`  (`VK_API_VERSION_1_1`)
+- `10`  (`VK_API_VERSION_1_0`)
+
+The shorthand versions are a user convenience, and  **MoltenVK** will 
+convert the shorthand value to the actual Vulkan version value upon setting.
 
 ---------------------------------------
 #### MVK_CONFIG_AUTO_GPU_CAPTURE_OUTPUT_FILE
@@ -426,6 +436,28 @@ the viewport, in which case this parameter can be disabled.
 
 
 ---------------------------------------
+#### MVK_CONFIG_SHADER_DUMP_DIR
+
+##### Type: String
+##### Default: `""`
+
+_(The default value is an empty string)._
+
+If not empty, **MoltenVK** will dump all SPIR-V shaders, compiled MSL shaders, and pipeline shader lists to the given directory.
+The directory will be non-recursively created if it doesn't already exist.
+
+
+---------------------------------------
+#### MVK_CONFIG_SHADER_LOG_ESTIMATED_GLSL
+
+##### Type: Boolean
+##### Default: `0`
+
+If the `MVK_CONFIG_DEBUG` parameter is enabled, and this parameter is enabled, when 
+SPIR-V code is converted to MSL, an estimate of the equivalent GLSL shader will be logged.
+
+
+---------------------------------------
 #### MVK_CONFIG_SHOULD_MAXIMIZE_CONCURRENT_COMPILATION
 
 ##### Type: Boolean
@@ -613,19 +645,40 @@ cases improves performance.
 
 
 ---------------------------------------
-#### MVK_CONFIG_USE_MTLHEAP
+#### MVK_CONFIG_USE_METAL_PRIVATE_API
 
 ##### Type: Boolean
-##### Default: `0`
+##### Default: Value of `MVK_USE_METAL_PRIVATE_API`
 
-Controls whether **MoltenVK** should use `MTLHeaps` for allocating textures and buffers from device memory.
-If this setting is enabled, and placement `MTLHeaps` are available on the platform, **MoltenVK** will allocate a
-placement `MTLHeap` for each `VkDeviceMemory` instance, and allocate textures and buffers from that placement heap.
-If this parameter is disabled, **MoltenVK** will allocate textures and buffers from general device memory.
+If enabled, **MoltenVK** will _use_ private interfaces exposed by _Metal_ to implement _Vulkan_
+features that are difficult to support otherwise.
 
-Apple recommends that `MTLHeaps` should only be used for specific requirements such as aliasing or hazard tracking,
-and **MoltenVK** testing has shown that allocating multiple textures of different types or usages from one `MTLHeap`
-can occassionally cause corruption issues under certain circumstances.
+Unlike `MVK_USE_METAL_PRIVATE_API`, this setting may be overridden at run time.
+
+This option is not available unless **MoltenVK** was built with `MVK_USE_METAL_PRIVATE_API` set to `1`.
+
+
+---------------------------------------
+#### MVK_CONFIG_USE_MTLHEAP
+
+##### Type: Enumeration
+- `0`: Do not use `MTLHeap` for allocating resources.
+- `1`: Use `MTLHeap` for allocating resources, where safe to do so. On AMD GPUs, this is the same as `0`, 
+  due to potential challenges with `MTLHeap` usage on those platforms. On other GPUs this is the same as `2`.
+- `2`: Use `MTLHeap` for allocating resources.
+
+##### Default: `1`
+
+Controls whether **MoltenVK** should use `MTLHeap` for allocating textures and buffers from device memory.
+If this setting is active, **MoltenVK** will allocate a placement `MTLHeap` for each `VkDeviceMemory` instance, 
+and allocate textures and buffers from that placement heap. If this parameter is not active, **MoltenVK** will 
+allocate textures and buffers from general device memory.
+
+Vulkan extension `VK_EXT_image_2d_view_of_3d` requires this parameter to be active, 
+to allow aliasing of texture memory between the 3D image and the 2D view.
+
+To force `MTLHeap` to be used on AMD GPUs, set this parameter to `2`. 
+To disable the use of `MTLHeap` on any GPU, set this parameter to `0`.
 
 
 ---------------------------------------
@@ -645,32 +698,5 @@ can occassionally cause corruption issues under certain circumstances.
 
 Determines the style used to implement _Vulkan_ semaphore (`VkSemaphore`) functionality in _Metal_.
 
-
 In the special case of `VK_SEMAPHORE_TYPE_TIMELINE` semaphores, **MoltenVK** will always use
 `MTLSharedEvent` if it is available on the platform, regardless of the value of this parameter.
-
-
----------------------------------------
-#### MVK_CONFIG_USE_METAL_PRIVATE_API
-
-##### Type: Boolean
-##### Default: Value of `MVK_USE_METAL_PRIVATE_API`
-
-If enabled, **MoltenVK** will _use_ private interfaces exposed by _Metal_ to implement _Vulkan_
-features that are difficult to support otherwise.
-
-Unlike `MVK_USE_METAL_PRIVATE_API`, this setting may be overridden at run time.
-
-This option is not available unless **MoltenVK** was built with `MVK_USE_METAL_PRIVATE_API` set to `1`.
-
-
----------------------------------------
-#### MVK_CONFIG_SHADER_DUMP_DIR
-
-##### Type: String
-##### Default: `""`
-
-_(The default value is an empty string)._
-
-If not empty, **MoltenVK** will dump all SPIR-V shaders, compiled MSL shaders, and pipeline shader lists to the given directory.
-The directory will be non-recursively created if it doesn't already exist.

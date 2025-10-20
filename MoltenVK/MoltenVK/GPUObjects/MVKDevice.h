@@ -1,7 +1,7 @@
 /*
  * MVKDevice.h
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -213,6 +213,9 @@ public:
 	/** Returns the supported time domains for calibration on this device. */
 	VkResult getCalibrateableTimeDomains(uint32_t* pTimeDomainCount, VkTimeDomainEXT* pTimeDomains);
 
+	/** Populates the specified structure with the tool properties of this device. */
+	VkResult getToolProperties(uint32_t* pToolCount, VkPhysicalDeviceToolProperties* pToolProperties);
+
 #pragma mark Surfaces
 
 	/**
@@ -370,7 +373,10 @@ public:
 
 	uint32_t getExternalResourceMemoryTypeBits(VkExternalMemoryHandleTypeFlagBits handleType, const void* handle) const;
 
-	
+	/** Returns the amount of memory currently consumed by the GPU. */
+	size_t getCurrentAllocatedSize();
+
+
 #pragma mark Metal
 
 	/** Populates the specified structure with the Metal-specific features of this device. */
@@ -432,7 +438,6 @@ protected:
 	void setMemoryType(uint32_t typeIndex, uint32_t heapIndex, VkMemoryPropertyFlags propertyFlags);
 	uint64_t getVRAMSize();
 	uint64_t getRecommendedMaxWorkingSetSize();
-	uint64_t getCurrentAllocatedSize();
 	uint32_t getMaxSamplerCount();
 	uint32_t getMaxPerSetDescriptorCount();
 	void initExternalMemoryProperties();
@@ -458,7 +463,7 @@ protected:
 	MVKPhysicalDeviceVulkan12FeaturesNoExt _vulkan12FeaturesNoExt;
 	MVKPhysicalDeviceMetalFeatures _metalFeatures;
 	VkPhysicalDeviceProperties _properties;
-	VkPhysicalDeviceTexelBufferAlignmentPropertiesEXT _texelBuffAlignProperties;
+	VkPhysicalDeviceTexelBufferAlignmentProperties _texelBuffAlignProperties;
 	VkPhysicalDeviceMemoryProperties _memoryProperties;
 	MVKSmallVector<MVKQueueFamily*, kMVKQueueFamilyCount> _queueFamilies;
 	VkExternalMemoryProperties _hostPointerExternalMemoryProperties;
@@ -491,6 +496,10 @@ typedef struct MVKMTLBlitEncoder {
 	id<MTLBlitCommandEncoder> mtlBlitEncoder = nil;
 	id<MTLCommandBuffer> mtlCmdBuffer = nil;
 } MVKMTLBlitEncoder;
+
+// Arbitrary, after that many barriers with a given source pipeline stage we will wrap around
+// and potentially introduce extra synchronization on previous invocations of the same stage.
+static const uint32_t kMVKBarrierFenceCount = 64;
 
 /** Represents a Vulkan logical GPU device, associated with a physical device. */
 class MVKDevice : public MVKDispatchableVulkanAPIObject {
@@ -695,9 +704,9 @@ public:
 
 	VkResult createPrivateDataSlot(const VkPrivateDataSlotCreateInfoEXT* pCreateInfo,
 								   const VkAllocationCallbacks* pAllocator,
-								   VkPrivateDataSlotEXT* pPrivateDataSlot);
+								   VkPrivateDataSlot* pPrivateDataSlot);
 
-	void destroyPrivateDataSlot(VkPrivateDataSlotEXT privateDataSlot,
+	void destroyPrivateDataSlot(VkPrivateDataSlot privateDataSlot,
 								const VkAllocationCallbacks* pAllocator);
 
 
@@ -824,6 +833,47 @@ public:
 
 	void* getResourceIdFromHandle(const VkMemoryGetMetalHandleInfoEXT* pGetMetalHandleInfo) const;
 
+#if !MVK_XCODE_16
+	void makeResident(id allocation) {}
+#else
+	void makeResident(id<MTLAllocation> allocation) {
+		@synchronized(_residencySet) {
+			[_residencySet addAllocation: allocation];
+			[_residencySet commit];
+		}
+	}
+#endif
+
+#if !MVK_XCODE_16
+	void removeResidency(id allocation) {}
+#else
+	void removeResidency(id<MTLAllocation> allocation) {
+		@synchronized(_residencySet) {
+			[_residencySet removeAllocation:allocation];
+			[_residencySet commit];
+		}
+	}
+#endif
+
+	void addResidencySet(id<MTLCommandQueue> queue) {
+#if MVK_XCODE_16
+		if (_residencySet) [queue addResidencySet:_residencySet];
+#endif
+	}
+
+	void removeResidencySet(id<MTLCommandQueue> queue) {
+#if MVK_XCODE_16
+		if (_residencySet) [queue removeResidencySet:_residencySet];
+#endif
+	}
+
+	bool hasResidencySet() {
+#if MVK_XCODE_16
+		return _residencySet != nil;
+#else
+		return false;
+#endif
+	}
 
 #pragma mark Construction
 
@@ -845,6 +895,16 @@ public:
     static inline MVKDevice* getMVKDevice(VkDevice vkDevice) {
         return (MVKDevice*)getDispatchableObject(vkDevice);
     }
+
+#pragma mark Barriers
+
+	/** Returns a Metal fence to update for the given barrier stage. */
+	id<MTLFence> getBarrierStageFence(id<MTLCommandBuffer> mtlCommandBuffer, MVKBarrierStage stage);
+
+	/** Returns a Metal fence by its stage and slot index. */
+	id<MTLFence> getFence(MVKBarrierStage stage, int index) {
+		return _barrierFences[stage][index];
+	}
 
 protected:
 	friend class MVKDeviceTrackingMixin;
@@ -885,6 +945,8 @@ protected:
 	VkPhysicalDevice##structName##Features##extnSfx _enabled##structName##Features;
 #include "MVKDeviceFeatureStructs.def"
 
+	id<MTLFence> _barrierFences[kMVKBarrierStageCount][kMVKBarrierFenceCount];
+
 	MVKPerformanceStatistics _performanceStats;
     MVKCommandResourceFactory* _commandResourceFactory = nullptr;
 	MVKSmallVector<MVKSmallVector<MVKQueue*, kMVKQueueCountPerQueueFamily>, kMVKQueueFamilyCount> _queuesByQueueFamilyIndex;
@@ -902,6 +964,9 @@ protected:
     id<MTLBuffer> _globalVisibilityResultMTLBuffer = nil;
 	id<MTLSamplerState> _defaultMTLSamplerState = nil;
 	id<MTLBuffer> _dummyBlitMTLBuffer = nil;
+#if MVK_XCODE_16
+	id<MTLResidencySet> _residencySet = nil;
+#endif
     uint32_t _globalVisibilityQueryCount = 0;
 	int _capturePipeFileDesc = -1;
 	bool _isPerformanceTracking = false;
@@ -1043,7 +1108,7 @@ class MVKPrivateDataSlot : public MVKVulkanAPIDeviceObject {
 public:
 
 	/** Returns the Vulkan type of this object. */
-	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_PRIVATE_DATA_SLOT_EXT; }
+	VkObjectType getVkObjectType() override { return VK_OBJECT_TYPE_PRIVATE_DATA_SLOT; }
 
 	/** Returns the debug report object type of this object. */
 	VkDebugReportObjectTypeEXT getVkDebugReportObjectType() override { return VK_DEBUG_REPORT_OBJECT_TYPE_UNKNOWN_EXT; }

@@ -1,7 +1,7 @@
 /*
  * mvk_datatypes.h
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -332,6 +332,15 @@ typedef enum {
 	kMVKShaderStageCount,
 	kMVKShaderStageMax = kMVKShaderStageCount	// Public API legacy value
 } MVKShaderStage;
+
+typedef enum {
+	kMVKBarrierStageVertex = 0,
+	kMVKBarrierStageFragment,
+	kMVKBarrierStageCompute,
+	kMVKBarrierStageCopy,
+	kMVKBarrierStageNone,
+	kMVKBarrierStageCount = kMVKBarrierStageNone
+} MVKBarrierStage;
 
 /** Returns the Metal MTLColorWriteMask corresponding to the specified Vulkan VkColorComponentFlags. */
 MTLColorWriteMask mvkMTLColorWriteMaskFromVkChannelFlags(VkColorComponentFlags vkWriteFlags);

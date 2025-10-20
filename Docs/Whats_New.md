@@ -6,17 +6,110 @@
 
 # What's New in MoltenVK
 
-Copyright (c) 2015-2024 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
+Copyright (c) 2015-2025 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 
 [comment]: # "This document is written in Markdown (http://en.wikipedia.org/wiki/Markdown) format."
 [comment]: # "For best results, use a Markdown reader."
 
 
 
+MoltenVK 1.3.0
+---------------
+
+Released 2025-04-27
+
+- Add support for _Vulkan 1.3_.
+- Add support for extensions:
+	- `VK_KHR_index_type_uint8`
+	- `VK_KHR_load_store_op_none`
+	- `VK_KHR_maintenance4`
+	- `VK_KHR_maintenance6`
+	- `VK_KHR_maintenance7`
+	- `VK_KHR_shader_expect_assume`
+	- `VK_KHR_shader_subgroup_rotate`
+	- `VK_KHR_shader_terminate_invocation`
+	- `VK_KHR_vulkan_memory_model`
+	- `VK_KHR_zero_initialize_workgroup_memory`
+	- `VK_EXT_depth_clip_control`
+	- `VK_EXT_external_memory_metal`.
+	- `VK_EXT_image_2d_view_of_3d`
+	- `VK_EXT_index_type_uint8`
+	- `VK_EXT_load_store_op_none`
+	- `VK_EXT_pipeline_robustness`
+	- `VK_EXT_tooling_info`
+- Add support for `B5G6R5_UNORM_PACK16` `B5G5R5A1_UNORM_PACK16`, and `B8G8R8A8` formats using swizzle.
+- Convert `MVK_CONFIG_USE_MTLHEAP` to enumeration, and set active by default to support 
+  `VK_EXT_image_2d_view_of_3d`, except on _AMD_ devices.
+- Remove `glslang` as dependency library.
+- `MoltenVKShaderConverter` no longer accepts GLSL` shaders as input.
+- Fixes to managing descriptor set allocation in a Metal argument buffer.
+- Fix _SPIRV-Cross_ namespace build error on some alternate build environments.
+- Fix recent failure of `CI.yml` to upload release build artifacts to GitHub.
+- Fix memory management issue in `MVKSwapchain`.
+- Fix indirect index for triangle fan topology.
+- Fix crash when shader validation is enabled.
+- Fix dynamic vertex stride with tessellation.
+- Fix Metal API violation when using `VK_KHR_swapchain_mutable_format`.
+- Fix designation of `vkGetPhysicalDeviceToolProperties` as a device entry-point.
+- Fix memory leak of `CAEDRMetadata` in `MVKSwapchain`.
+- Fix not saving `shouldFixupClipSpace` when serializing a pipeline.
+- Fix header namespace pollution.
+- Revert use of size 1 for variable length arrays in shader.
+- Add `MTLHeaps` export/import for emulated textures.
+- `MTLHeaps` on Apple Device Simulator must use private storage.
+- Remove atomic usage for `RG32Uint`.
+- Handle shader specializtion with macros.
+- Use Metal residency sets when available.
+- Implement barriers using Metal fences.
+- `vkCmdWaitEvents` end current encoder before `encodeWait`.
+- Remove support for deprecated `VK_NV_glsl_shader` extension, and GLSL conversions using _**MoltenVKShaderConverter**_.
+- Remove use of `VK_ERROR_INVALID_SHADER_NV` error code.
+- Reduce number of unused pipeline bindings reserved for argument buffers.
+- Disable unsupported Metal Pixel formats for _iOS/tvOS Simulator_.
+- Revert to fixed number of argument buffer binding reservations.
+- Ignore allowed bad `pViewportState` pointer if rasterization is disabled.
+- Improved estimation of vertex attribute buffer count when reserving for implicit buffer.
+- Fix header-hygiene warning violations.
+- `MVKCmdWaitEvents`: end current encoder before `encodeWait`.
+- Add missing `depthClamp` and `shaderTessellationAndGeometryPointSize` features to _tvOS_.
+- Update features overrides to all Simulators: _iOS, tvOS, visionOS_.
+- Fix a crash when searching the first enabled bit in a completely disabled bit array.
+- When shader specifies both WorkgroupSize builtin and LocalSizeId, the builtin takes precedence.
+- When logging a pipeline layout, log contained descriptor set layouts.
+- Add debug labels to barrier fences.
+- Allow the proc address of `vkGetMoltenVKConfigurationMVK()` to be retrieved before a `VkInstance` has been created.
+- Work around 10.15 AMD driver's broken blit encoder timestamp sampling.
+- GitHub CI update legacy build to _macOS 13 / Xcode 14_.
+- Fix compile with `MVK_USE_CEREAL=0`.
+- Update copyright notices to year 2025.
+- Update to latest SPIRV-Cross:
+  - MSL: Support broader tessellation I/O matching for `VK_KHR_maintenance4`.
+  - MSL: Add support for `SPV_KHR_expect_assume`.
+  - GLSL/MSL: Implement `SPV_KHR_subgroup_rotate`.
+  - MSL: Implement subgroup clustered rotate.
+  - MSL: Pad array elements in Metal argument buffer when shader declares scalar.
+  - MSL: Expose information about specialization constants - macro mapping
+  - MSL: Use unpacked arguments in texture arguments.
+  - MSL: Fix emission of bindless helper template for bindless SSBO.
+  - MSL: Use actual result type member as cast type for mulhi.
+  - MSL: Terminate function with return value using return if ending in unreachable.
+  - MSL: Add option to disable rasterization depending on usage.
+  - MSL: Always pass BDA by value into functions.
+  - MSL: Apply input override on all flattened members in interface block.
+  - GLSL/MSL: Support `VK_KHR_zero_initialize_workgroup_memory`
+  - MSL: Treat pointer to vector as scalar type when bitcasting.
+  - MSL: Use the more proper pointer typing.
+  - MSL: Use decltype for getting return of gather.
+  - MSL: Remove `spvForward()`.
+  - MSL: Fix gather functions on Sequoia.
+  - MSL: Fix crash when per-primitive variables are not used.
+
+
+
 MoltenVK 1.2.11
 ---------------
 
-Released 2024-09-24
+Released 2024-10-01
 
 - Support dynamically allocating descriptors when pool is exhausted.
 - Deprecate `MVKConfiguration::preallocateDescriptors` and `MVK_CONFIG_PREALLOCATE_DESCRIPTORS` environment variable.
@@ -27,16 +120,23 @@ Released 2024-09-24
   end of a descriptor binding count, including inline uniform block descriptors.
 - Update `VkFormat` capabilities based on latest Metal docs.
 - Ensure all MoltenVK config info set by `VK_EXT_layer_settings` is used.
+- Advertise `VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT` and 
+  `VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT` for storage texel buffers.
 - Support storage images in Metal argument buffers on _iOS_.
+- `vkUpdateDescriptorSets()`: Support writing beyond descriptor binding size if subsequent bindings are of same type.
 - Fix rendering issue with render pass that immediately follows a kernel dispatch.
+- Fix occasional GPU crash when a smaller descriptor set replaces a larger one.
 - Fix race condition when `VkImage` destroyed while used by descriptor.
 - Fix crash in `vkCmdPushDescriptorSetWithTemplateKHR()` when entries in 
   `VkDescriptorUpdateTemplateCreateInfo` are not sorted by offset.
 - Fix issue where `vkQueueWaitIdle()` and `vkDeviceWaitIdle()` were not 
   waiting for all commands to be enqueued before enqueuing wait operation.
+- Fix occassional incorrect detection of available descriptor sets during `vkAllocateDescriptorSets()`.
+- Fix shader conversion failure when using storage images on _iOS_ & _tvOS_ with Tier 1 argument buffer support.
+- Fix occasional memory leak where spurious texel buffer was accidentally created during image-memory unbinding.
 - Fix memory leak in debug utils messenger.
+- Fix crash when `VkDescriptorSetLayout` is destroyed while descriptor set is in use.
 - Fix build failure on _VisionOS 2.0_ platform.
-- `vkUpdateDescriptorSets()`: Support writing beyond descriptor binding size if subsequent bindings are of same type.
 - Support `VK_FORMAT_A2B10G10R10_UNORM_PACK32` and `VK_FORMAT_A2R10G10B10_UNORM_PACK32` formats as surface formats on all platforms.
 - Add `MTLStoreAction` mapping for `VK_ATTACHMENT_STORE_OP_NONE`.
 - Add estimate of `presentMargin` in returned data from `vkGetPastPresentationTimingGOOGLE()`.
@@ -45,7 +145,13 @@ Released 2024-09-24
 - Only add present handler if `VK_GOOGLE_display_timing` info is available during presentation.
 - Move primitive-restart-disabled warning from renderpass to pipeline creation, to reduce voluminous log noise.
 - iOS: Support storage images in _Metal_ argument buffers.
-- Update dependency libraries to match _Vulkan SDK 1.3.295_.
+- Add `MVKConfiguration::shaderLogEstimatedGLSL`, and environment variable `MVK_CONFIG_SHADER_LOG_ESTIMATED_GLSL`, 
+  to enable or disable the logging of estimated _GLSL_ code, and disable it by default
+- Fix endless loop in `fetchDependencies` when `--` is missing on platform names.
+- Update dependency libraries to match _Vulkan SDK 1.3.296_.
+- Update `MVK_PRIVATE_API_VERSION` to version `43`.
+- Update to latest SPIRV-Cross:
+  - Various non-feature maintenance updates.
 
 
 

@@ -1,7 +1,7 @@
 /*
  * MVKSwapchain.mm
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -356,15 +356,16 @@ void MVKSwapchain::setHDRMetadataEXT(const VkHdrMetadataEXT& metadata) {
 	colorVol.min_display_mastering_luminance = OSSwapHostToBigInt32((uint32_t)(metadata.minLuminance * 10000));
 	lightLevel.max_content_light_level = OSSwapHostToBigInt16((uint16_t)metadata.maxContentLightLevel);
 	lightLevel.max_pic_average_light_level = OSSwapHostToBigInt16((uint16_t)metadata.maxFrameAverageLightLevel);
-	NSData* colorVolData = [NSData dataWithBytes: &colorVol length: sizeof(colorVol)];
-	NSData* lightLevelData = [NSData dataWithBytes: &lightLevel length: sizeof(lightLevel)];
-	CAEDRMetadata* caMetadata = [CAEDRMetadata HDR10MetadataWithDisplayInfo: colorVolData
-																contentInfo: lightLevelData
-														 opticalOutputScale: 1];
-	auto* mtlLayer = getCAMetalLayer();
-	mtlLayer.EDRMetadata = caMetadata;
-	mtlLayer.wantsExtendedDynamicRangeContent = YES;
-	[caMetadata release];
+	NSData* colorVolData = [[NSData alloc] initWithBytes: &colorVol length: sizeof(colorVol)];
+	NSData* lightLevelData = [[NSData alloc] initWithBytes: &lightLevel length: sizeof(lightLevel)];
+    @autoreleasepool {
+        CAEDRMetadata* caMetadata = [CAEDRMetadata HDR10MetadataWithDisplayInfo: colorVolData
+                                                                    contentInfo: lightLevelData
+                                                             opticalOutputScale: 1];
+        auto* mtlLayer = getCAMetalLayer();
+        mtlLayer.EDRMetadata = caMetadata;
+        mtlLayer.wantsExtendedDynamicRangeContent = YES;
+    }
 	[colorVolData release];
 	[lightLevelData release];
 #endif
@@ -482,7 +483,8 @@ void MVKSwapchain::initCAMetalLayer(const VkSwapchainCreateInfoKHR* pCreateInfo,
 	mtlLayer.framebufferOnly = !mvkIsAnyFlagEnabled(pCreateInfo->imageUsage, (VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
 																			  VK_IMAGE_USAGE_TRANSFER_DST_BIT |
 																			  VK_IMAGE_USAGE_SAMPLED_BIT |
-																			  VK_IMAGE_USAGE_STORAGE_BIT));
+																			  VK_IMAGE_USAGE_STORAGE_BIT)) &&
+								!mvkAreAllFlagsEnabled(pCreateInfo->flags, VK_SWAPCHAIN_CREATE_MUTABLE_FORMAT_BIT_KHR);
 
 	// Because of a regression in Metal, the most recent one or two presentations may not
 	// complete and call back. Changing the CAMetalLayer drawableSize will force any incomplete

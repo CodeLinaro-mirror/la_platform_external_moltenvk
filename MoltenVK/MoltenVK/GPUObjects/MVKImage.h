@@ -1,7 +1,7 @@
 /*
  * MVKImage.h
  *
- * Copyright (c) 2015-2024 The Brenwill Workshop Ltd. (http://www.brenwill.com)
+ * Copyright (c) 2015-2025 The Brenwill Workshop Ltd. (http://www.brenwill.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -91,6 +91,7 @@ protected:
     id<MTLTexture> _mtlTexture;
     std::unordered_map<NSUInteger, id<MTLTexture>> _mtlTextureViews;
     MVKSmallVector<MVKImageSubresource, 1> _subresources;
+    HeapAllocation _heapAllocation;
 };
 
 
@@ -111,7 +112,7 @@ public:
     VkResult getMemoryRequirements(VkMemoryRequirements* pMemoryRequirements);
 
     /** Returns the memory requirements of this resource by populating the specified structure. */
-    VkResult getMemoryRequirements(const void* pInfo, VkMemoryRequirements2* pMemoryRequirements);
+    VkResult getMemoryRequirements(VkMemoryRequirements2* pMemoryRequirements);
 
     /** Binds this resource to the specified offset within the specified memory allocation. */
     VkResult bindDeviceMemory(MVKDeviceMemory* mvkMem, VkDeviceSize memOffset) override;
@@ -200,22 +201,22 @@ public:
     /** Returns the number of samples for each pixel of this image. */
     VkSampleCountFlagBits getSampleCount() { return _samples; }
 
-	 /** 
-	  * Returns the number of bytes per image row at the specified zero-based mip level.
-      * For non-compressed formats, this is the number of bytes in a row of texels.
-      * For compressed formats, this is the number of bytes in a row of blocks, which
-      * will typically span more than one row of texels.
-	  */
-	VkDeviceSize getBytesPerRow(uint8_t planeIndex, uint32_t mipLevel);
-
+	/**
+	 * Returns the number of bytes per image row for the mip with the given width.
+	 * For non-compressed formats, this is the number of bytes in a row of texels.
+	 * For compressed formats, this is the number of bytes in a row of blocks, which
+	 * will typically span more than one row of texels.
+	 */
+	VkDeviceSize getBytesPerRow(MTLPixelFormat planePixelFormat, uint32_t mipWidth);
+	
 	/**
 	 * Returns the number of bytes per image layer (for cube, array, or 3D images) 
-	 * at the specified zero-based mip level. This value will normally be the number
-	 * of bytes per row (as returned by the getBytesPerRow() function, multiplied by 
+	 * for the mip with the given extent. This value will normally be the number
+	 * of bytes per row (as returned by the getBytesPerRow() function, multiplied by
 	 * the height of each 2D image.
 	 */
-	VkDeviceSize getBytesPerLayer(uint8_t planeIndex, uint32_t mipLevel);
-    
+	VkDeviceSize getBytesPerLayer(uint8_t planeIndex, VkExtent3D mipExtent);
+	
     /** Returns the number of planes of this image view. */
     uint8_t getPlaneCount() { return _planes.size(); }
 
@@ -233,6 +234,7 @@ public:
     /** Populates the specified transfer image descriptor data structure. */
     void getTransferDescriptorData(MVKImageDescriptorData& imgData);
 
+    MTLTextureDescriptor* newMTLTextureDescriptor(uint32_t planeIndex);
 
 #pragma mark Resource memory
 
@@ -240,7 +242,9 @@ public:
 	VkResult getMemoryRequirements(VkMemoryRequirements* pMemoryRequirements, uint8_t planeIndex);
 
 	/** Returns the memory requirements of this resource by populating the specified structure. */
-	VkResult getMemoryRequirements(const void* pInfo, VkMemoryRequirements2* pMemoryRequirements);
+	VkResult getMemoryRequirements(const VkImageMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements);
+
+	VkResult getMemoryRequirements(VkMemoryRequirements2* pMemoryRequirements, uint8_t planeIndex);
 
 	/** Binds this resource to the specified offset within the specified memory allocation. */
 	virtual VkResult bindDeviceMemory(MVKDeviceMemory* mvkMem, VkDeviceSize memOffset, uint8_t planeIndex);
@@ -334,6 +338,8 @@ public:
 	/** Returns the Metal CPU cache mode used by this image. */
 	MTLCPUCacheMode getMTLCPUCacheMode();
 
+	HeapAllocation* getHeapAllocation(uint32_t planeIndex);
+
 
 #pragma mark Construction
 
@@ -395,6 +401,7 @@ protected:
 	bool _hasMutableFormat;
 	bool _shouldSupportAtomics;
 	bool _isLinearForAtomics;
+	bool _is2DViewOn3DImageCompatible = false;
 };
 
 
