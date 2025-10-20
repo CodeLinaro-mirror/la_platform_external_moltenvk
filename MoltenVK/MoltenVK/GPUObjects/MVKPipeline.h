@@ -19,6 +19,7 @@
 #pragma once
 
 #include "MVKDevice.h"
+#include "MVKRenderPass.h"
 #include "MVKDescriptorSet.h"
 #include "MVKShaderModule.h"
 #include "MVKSync.h"
@@ -157,15 +158,31 @@ public:
 	/** Returns whether the pipeline creation fail if a pipeline compile is required. */
 	bool shouldFailOnPipelineCompileRequired() {
 		return (getEnabledPipelineCreationCacheControlFeatures().pipelineCreationCacheControl &&
-				mvkIsAnyFlagEnabled(_flags, VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT));
+				mvkIsAnyFlagEnabled(_flags, VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT));
 	}
 
 	/** Returns whether the shader for the stage uses physical storage buffer addresses. */
 	virtual bool usesPhysicalStorageBufferAddressesCapability(MVKShaderStage stage) = 0;
 
+	/** Returns the pipeline create flags from a pipeline create info. */
+	template <typename PipelineInfoType>
+	static VkPipelineCreateFlags2 getPipelineCreateFlags(const PipelineInfoType* pCreateInfo) {
+		auto flags = pCreateInfo->flags;
+		for (const auto* next = (VkBaseInStructure*)pCreateInfo->pNext; next; next = next->pNext) {
+			switch (next->sType) {
+				case VK_STRUCTURE_TYPE_PIPELINE_CREATE_FLAGS_2_CREATE_INFO:
+					flags |= ((VkPipelineCreateFlags2CreateInfo*)next)->flags;
+					break;
+				default:
+					break;
+			}
+		}
+		return flags;
+	}
+
 	/** Constructs an instance for the device. layout, and parent (which may be NULL). */
 	MVKPipeline(MVKDevice* device, MVKPipelineCache* pipelineCache, MVKPipelineLayout* layout,
-				VkPipelineCreateFlags flags, MVKPipeline* parent);
+				VkPipelineCreateFlags2 flags, MVKPipeline* parent);
 
 protected:
 	void propagateDebugName() override {}
@@ -181,7 +198,7 @@ protected:
 	MVKShaderImplicitRezBinding _dynamicOffsetBufferIndex;
 	MVKShaderImplicitRezBinding _indirectParamsIndex;
 	MVKShaderImplicitRezBinding _pushConstantsBufferIndex;
-	VkPipelineCreateFlags _flags;
+	VkPipelineCreateFlags2 _flags;
 	uint32_t _descriptorSetCount;
 	bool _stageUsesPushConstants[kMVKShaderStageCount];
 	bool _fullImageViewSwizzle;
@@ -224,6 +241,8 @@ enum MVKRenderStateType {
 	DepthTestEnable,
 	DepthWriteEnable,
 	FrontFace,
+	LineRasterizationMode,
+	LineStippleEnable,
 	LineWidth,
 	LogicOp,
 	LogicOpEnable,
@@ -382,12 +401,14 @@ protected:
 	MVKMTLFunction getMTLFunction(mvk::SPIRVToMSLConversionConfiguration& shaderConfig,
 								  const VkPipelineShaderStageCreateInfo* pShaderStage,
 								  VkPipelineCreationFeedback* pStageFB,
+								  MVKShaderModule* pShaderModule,
 								  const char* pStageName);
-	void markIfUsingPhysicalStorageBufferAddressesCapability(mvk::SPIRVToMSLConversionResultInfo& resultsInfo,
-															 MVKShaderStage stage);
+	void markIfUsingPhysicalStorageBufferAddressesCapability(mvk::SPIRVToMSLConversionResultInfo& resultsInfo, MVKShaderStage stage);
+	void populateRenderingAttachmentInfo(const VkGraphicsPipelineCreateInfo* pCreateInfo);
 
 	VkPipelineTessellationStateCreateInfo _tessInfo;
 	VkPipelineRasterizationStateCreateInfo _rasterInfo;
+	VkPipelineRasterizationLineStateCreateInfo _rasterLineInfo;
 	VkPipelineDepthStencilStateCreateInfo _depthStencilInfo;
 	MVKRenderStateFlags _dynamicState;
 
@@ -398,6 +419,7 @@ protected:
 	MVKSmallVector<MVKZeroDivisorVertexBinding> _zeroDivisorVertexBindings;
 	MVKSmallVector<MVKStagedDescriptorBindingUse> _descriptorBindingUse;
 	MVKSmallVector<MVKShaderStage> _stagesUsingPhysicalStorageBufferAddressesCapability;
+	MVKSmallVector<uint32_t, kMVKDefaultAttachmentCount> _colorAttachmentLocations;
 	std::unordered_map<uint32_t, id<MTLRenderPipelineState>> _multiviewMTLPipelineStates;
 
 	id<MTLComputePipelineState> _mtlTessVertexStageState = nil;
@@ -415,10 +437,20 @@ protected:
 	uint32_t _tessCtlPatchOutputBufferIndex = 0;
 	uint32_t _tessCtlLevelBufferIndex = 0;
 
+	MVKShaderModule* _vertexModule = nullptr;
+	bool _ownsVertexModule = false;
+	MVKShaderModule* _tessCtlModule = nullptr;
+	bool _ownsTessCtlModule = false;
+	MVKShaderModule* _tessEvalModule = nullptr;
+	bool _ownsTessEvalModule = false;
+	MVKShaderModule* _fragmentModule = nullptr;
+	bool _ownsFragmentModule = false;
+
 	static constexpr uint32_t kMVKMaxVertexInputBindingBufferCount = 31u; // Taken from Metal Feature Set Table. Highest value out of all present GPUs
 	bool _isVertexInputBindingUsed[kMVKMaxVertexInputBindingBufferCount] = { false };
 	bool _primitiveRestartEnable = true;
 	bool _hasRasterInfo = false;
+	bool _hasRasterLineInfo = false;
 	bool _needsVertexSwizzleBuffer = false;
 	bool _needsVertexBufferSizeBuffer = false;
 	bool _needsVertexDynamicOffsetBuffer = false;
@@ -442,6 +474,7 @@ protected:
 	bool _sampleLocationsEnable = false;
 	bool _isTessellationPipeline = false;
 	bool _inputAttachmentIsDSAttachment = false;
+	bool _hasRemappedAttachmentLocations = false;
 };
 
 
@@ -485,6 +518,9 @@ protected:
     bool _needsDispatchBaseBuffer = false;
     bool _allowsDispatchBase = false;
 	bool _usesPhysicalStorageBufferAddressesCapability = false;
+
+	MVKShaderModule* _module = nullptr;
+	bool _ownsModule = false;
 };
 
 
@@ -547,6 +583,7 @@ protected:
 	size_t _dataSize = 0;
 	std::mutex _shaderCacheLock;
 	bool _isExternallySynchronized = false;
+	bool _isMergeInternallySynchronized = false;
 };
 
 
@@ -622,3 +659,10 @@ protected:
 
 	id<MTLComputePipelineState> _mtlComputePipelineState = nil;
 };
+
+
+#pragma mark -
+#pragma mark Support functions
+
+/** Validate the definitions of the Cereal Archives. */
+void mvkValidateCeralArchiveDefinitions();

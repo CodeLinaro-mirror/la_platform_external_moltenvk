@@ -535,7 +535,7 @@ MTLVertexFormat MVKPixelFormats::getMTLVertexFormat(VkFormat vkFormat) {
 	return mtlVtxFmt;
 }
 
-MTLClearColor MVKPixelFormats::getMTLClearColor(VkClearValue vkClearValue, VkFormat vkFormat) {
+MTLClearColor MVKPixelFormats::getMTLClearColor(VkClearColorValue clearValue, VkFormat vkFormat) {
 	MTLClearColor mtlClr;
 	// The VkComponentMapping (and its MTLTextureSwizzleChannels equivalent) define the *sources*
 	// for the texture color components for reading. Since we're *writing* to the texture,
@@ -545,10 +545,10 @@ MTLClearColor MVKPixelFormats::getMTLClearColor(VkClearValue vkClearValue, VkFor
 	switch (getFormatType(vkFormat)) {
 		case kMVKFormatColorHalf:
 		case kMVKFormatColorFloat: {
-			mtlClr.red		= mvkVkClearColorFloatValueFromVkComponentSwizzle(vkClearValue.color.float32, 0, inverseMap.r);
-			mtlClr.green	= mvkVkClearColorFloatValueFromVkComponentSwizzle(vkClearValue.color.float32, 1, inverseMap.g);
-			mtlClr.blue		= mvkVkClearColorFloatValueFromVkComponentSwizzle(vkClearValue.color.float32, 2, inverseMap.b);
-			mtlClr.alpha	= mvkVkClearColorFloatValueFromVkComponentSwizzle(vkClearValue.color.float32, 3, inverseMap.a);
+			mtlClr.red		= mvkVkClearColorFloatValueFromVkComponentSwizzle(clearValue.float32, 0, inverseMap.r);
+			mtlClr.green	= mvkVkClearColorFloatValueFromVkComponentSwizzle(clearValue.float32, 1, inverseMap.g);
+			mtlClr.blue		= mvkVkClearColorFloatValueFromVkComponentSwizzle(clearValue.float32, 2, inverseMap.b);
+			mtlClr.alpha	= mvkVkClearColorFloatValueFromVkComponentSwizzle(clearValue.float32, 3, inverseMap.a);
 
 			if (_physicalDevice && _physicalDevice->getMetalFeatures()->clearColorFloatRounding == MVK_FLOAT_ROUNDING_DOWN) {
 				// For normalized formats, increment the clear value by half the ULP
@@ -581,9 +581,14 @@ MTLClearColor MVKPixelFormats::getMTLClearColor(VkClearValue vkClearValue, VkFor
 					case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
 					case VK_FORMAT_B5G5R5A1_UNORM_PACK16:
 					case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
+					case VK_FORMAT_A1B5G5R5_UNORM_PACK16:
 						OFFSET_UNORM(red, 5)
 						OFFSET_UNORM(green, 5)
 						OFFSET_UNORM(blue, 5)
+						OFFSET_UNORM(alpha, 1)
+						break;
+					case VK_FORMAT_A8_UNORM:
+						OFFSET_UNORM(alpha, 8)
 						break;
 					case VK_FORMAT_R8_UNORM:
 						OFFSET_UNORM(red, 8)
@@ -661,18 +666,18 @@ MTLClearColor MVKPixelFormats::getMTLClearColor(VkClearValue vkClearValue, VkFor
 		case kMVKFormatColorUInt8:
 		case kMVKFormatColorUInt16:
 		case kMVKFormatColorUInt32:
-			mtlClr.red   = mvkVkClearColorUIntValueFromVkComponentSwizzle(vkClearValue.color.uint32, 0, inverseMap.r);
-			mtlClr.green = mvkVkClearColorUIntValueFromVkComponentSwizzle(vkClearValue.color.uint32, 1, inverseMap.g);
-			mtlClr.blue  = mvkVkClearColorUIntValueFromVkComponentSwizzle(vkClearValue.color.uint32, 2, inverseMap.b);
-			mtlClr.alpha = mvkVkClearColorUIntValueFromVkComponentSwizzle(vkClearValue.color.uint32, 3, inverseMap.a);
+			mtlClr.red   = mvkVkClearColorUIntValueFromVkComponentSwizzle(clearValue.uint32, 0, inverseMap.r);
+			mtlClr.green = mvkVkClearColorUIntValueFromVkComponentSwizzle(clearValue.uint32, 1, inverseMap.g);
+			mtlClr.blue  = mvkVkClearColorUIntValueFromVkComponentSwizzle(clearValue.uint32, 2, inverseMap.b);
+			mtlClr.alpha = mvkVkClearColorUIntValueFromVkComponentSwizzle(clearValue.uint32, 3, inverseMap.a);
 			break;
 		case kMVKFormatColorInt8:
 		case kMVKFormatColorInt16:
 		case kMVKFormatColorInt32:
-			mtlClr.red   = mvkVkClearColorIntValueFromVkComponentSwizzle(vkClearValue.color.int32, 0, inverseMap.r);
-			mtlClr.green = mvkVkClearColorIntValueFromVkComponentSwizzle(vkClearValue.color.int32, 1, inverseMap.g);
-			mtlClr.blue  = mvkVkClearColorIntValueFromVkComponentSwizzle(vkClearValue.color.int32, 2, inverseMap.b);
-			mtlClr.alpha = mvkVkClearColorIntValueFromVkComponentSwizzle(vkClearValue.color.int32, 3, inverseMap.a);
+			mtlClr.red   = mvkVkClearColorIntValueFromVkComponentSwizzle(clearValue.int32, 0, inverseMap.r);
+			mtlClr.green = mvkVkClearColorIntValueFromVkComponentSwizzle(clearValue.int32, 1, inverseMap.g);
+			mtlClr.blue  = mvkVkClearColorIntValueFromVkComponentSwizzle(clearValue.int32, 2, inverseMap.b);
+			mtlClr.alpha = mvkVkClearColorIntValueFromVkComponentSwizzle(clearValue.int32, 3, inverseMap.a);
 			break;
 		default:
 			mtlClr.red   = 0.0;
@@ -682,14 +687,6 @@ MTLClearColor MVKPixelFormats::getMTLClearColor(VkClearValue vkClearValue, VkFor
 			break;
 	}
 	return mtlClr;
-}
-
-double MVKPixelFormats::getMTLClearDepthValue(VkClearValue vkClearValue) {
-	return vkClearValue.depthStencil.depth;
-}
-
-uint32_t MVKPixelFormats::getMTLClearStencilValue(VkClearValue vkClearValue) {
-	return vkClearValue.depthStencil.stencil;
 }
 
 VkImageUsageFlags MVKPixelFormats::getVkImageUsageFlags(MTLTextureUsage mtlUsage,
@@ -897,6 +894,9 @@ void MVKPixelFormats::initVkFormatCapabilities() {
 	addVkFormatDesc( R5G5B5A1_UNORM_PACK16, A1BGR5Unorm, Invalid, Invalid, Invalid, 1, 1, 2, ColorFloat );
 	addVkFormatDescSwizzled( B5G5R5A1_UNORM_PACK16, A1BGR5Unorm, Invalid, Invalid, Invalid, 1, 1, 2, ColorFloat, B, G, R, A );
 	addVkFormatDesc( A1R5G5B5_UNORM_PACK16, BGR5A1Unorm, Invalid, Invalid, Invalid, 1, 1, 2, ColorFloat );
+	addVkFormatDescSwizzled( A1B5G5R5_UNORM_PACK16, BGR5A1Unorm, Invalid, Invalid, Invalid, 1, 1, 2, ColorFloat, B, G, R, A );
+
+	addVkFormatDesc( A8_UNORM, A8Unorm, Invalid, UCharNormalized, UChar2Normalized, 1, 1, 1, ColorFloat );
 
 	addVkFormatDesc( R8_UNORM, R8Unorm, Invalid, UCharNormalized, UChar2Normalized, 1, 1, 1, ColorFloat );
 	addVkFormatDesc( R8_SNORM, R8Snorm, Invalid, CharNormalized, Char2Normalized, 1, 1, 1, ColorFloat );
@@ -1654,7 +1654,7 @@ typedef enum : VkFormatFeatureFlags2 {
 	kMVKVkFormatFeatureFlagsTexRead     = (VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT |
 										   VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
 										   VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT |
-										   VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT_EXT |
+										   VK_FORMAT_FEATURE_2_HOST_IMAGE_TRANSFER_BIT |
 										   VK_FORMAT_FEATURE_2_BLIT_SRC_BIT),
 	kMVKVkFormatFeatureFlagsTexFilter   = (VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT),
 	kMVKVkFormatFeatureFlagsTexWrite    = (VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT |
@@ -1750,9 +1750,10 @@ void MVKPixelFormats::setFormatProperties(MVKVkFormatDesc& vkDesc, const MVKMTLD
 	}
 
 	// Texel buffers are not available to depth/stencil, compressed, or chroma subsampled formats.
+	// Additionally, format swizzles are not applied to texel buffers yet.
 	vkProps.bufferFeatures = kMVKVkFormatFeatureFlagsTexNone;
 	if ( !(vkDesc.formatType == kMVKFormatDepthStencil || vkDesc.formatType == kMVKFormatCompressed ||
-		   chromaSubsamplingComponentBits > 0) ) {
+		   chromaSubsamplingComponentBits > 0 || vkDesc.needsSwizzle()) ) {
 		enableFormatFeatures(Read, Buf, mtlPixFmtCaps, vkProps.bufferFeatures);
 		enableFormatFeatures(Write, Buf, mtlPixFmtCaps, vkProps.bufferFeatures);
 		enableFormatFeatures(Atomic, Buf, mtlPixFmtCaps, vkProps.bufferFeatures);

@@ -498,8 +498,8 @@ MVK_PUBLIC_VULKAN_SYMBOL VkResult vkMapMemory(
    void**                                      ppData) {
 
 	MVKTraceVulkanCallStart();
-	VkMemoryMapInfoKHR mapInfo = {};
-	mapInfo.sType = VK_STRUCTURE_TYPE_MEMORY_MAP_INFO_KHR;
+	VkMemoryMapInfo mapInfo = {};
+	mapInfo.sType = VK_STRUCTURE_TYPE_MEMORY_MAP_INFO;
 	mapInfo.pNext = nullptr;
 	mapInfo.flags = flags;
 	mapInfo.memory = mem;
@@ -517,8 +517,8 @@ MVK_PUBLIC_VULKAN_SYMBOL void vkUnmapMemory(
     VkDeviceMemory                              mem) {
 	
 	MVKTraceVulkanCallStart();
-	VkMemoryUnmapInfoKHR unmapInfo = {};
-	unmapInfo.sType = VK_STRUCTURE_TYPE_MEMORY_UNMAP_INFO_KHR;
+	VkMemoryUnmapInfo unmapInfo = {};
+	unmapInfo.sType = VK_STRUCTURE_TYPE_MEMORY_UNMAP_INFO;
 	unmapInfo.pNext = nullptr;
 	unmapInfo.flags = 0;
 	unmapInfo.memory = mem;
@@ -2919,27 +2919,51 @@ MVK_PUBLIC_VULKAN_SYMBOL VkResult vkSetPrivateData(
 #pragma mark -
 #pragma mark Vulkan 1.4 calls
 
-MVK_PUBLIC_VULKAN_SYMBOL VkResult vkMapMemory2(
-    VkDevice device,
-    const VkMemoryMapInfo* pMemoryMapInfo,
-    void** ppData) {
+MVK_PUBLIC_VULKAN_SYMBOL void vkCmdBindIndexBuffer2(
+    VkCommandBuffer                             commandBuffer,
+    VkBuffer                                    buffer,
+    VkDeviceSize                                offset,
+    VkDeviceSize                                size,
+    VkIndexType                                 indexType) {
 
-    MVKTraceVulkanCallStart();
-    MVKDeviceMemory* mvkMem = (MVKDeviceMemory*)pMemoryMapInfo->memory;
-    VkResult rslt = mvkMem->map(pMemoryMapInfo, ppData);
-    MVKTraceVulkanCallEnd();
-    return rslt;
+	MVKTraceVulkanCallStart();
+	MVKAddCmd(BindIndexBuffer, commandBuffer, buffer, offset, size, indexType);
+	MVKTraceVulkanCallEnd();
 }
 
-MVK_PUBLIC_VULKAN_SYMBOL VkResult vkUnmapMemory2(
-    VkDevice device,
-    const VkMemoryUnmapInfo* pMemoryUnmapInfo) {
+MVK_PUBLIC_VULKAN_SYMBOL void vkGetRenderingAreaGranularity(
+    VkDevice                                    device,
+    const VkRenderingAreaInfo*                  pRenderingAreaInfo,
+    VkExtent2D*                                 pGranularity) {
 
-    MVKTraceVulkanCallStart();
-    MVKDeviceMemory* mvkMem = (MVKDeviceMemory*)pMemoryUnmapInfo->memory;
-    VkResult rslt = mvkMem->unmap(pMemoryUnmapInfo);
-    MVKTraceVulkanCallEnd();
-    return rslt;
+	MVKTraceVulkanCallStart();
+	auto* mvkDev = MVKDevice::getMVKDevice(device);
+	*pGranularity = mvkDev->getDynamicRenderAreaGranularity();
+	MVKTraceVulkanCallEnd();
+}
+
+MVK_PUBLIC_VULKAN_SYMBOL void  vkGetImageSubresourceLayout2(
+    VkDevice                                    device,
+    VkImage                                     image,
+    const VkImageSubresource2*                  pSubresource,
+    VkSubresourceLayout2*                       pLayout) {
+
+	MVKTraceVulkanCallStart();
+	MVKImage* mvkImg = (MVKImage*)image;
+	mvkImg->getSubresourceLayout(pSubresource, pLayout);
+	MVKTraceVulkanCallEnd();
+}
+
+MVK_PUBLIC_VULKAN_SYMBOL void  vkGetDeviceImageSubresourceLayout(
+    VkDevice                                    device,
+    const VkDeviceImageSubresourceInfo*         pInfo,
+    VkSubresourceLayout2*                       pLayout) {
+
+	MVKTraceVulkanCallStart();
+	auto* mvkDev = MVKDevice::getMVKDevice(device);
+	MVKImage mvkImg(mvkDev, pInfo->pCreateInfo);
+	mvkImg.getSubresourceLayout(pInfo->pSubresource, pLayout);
+	MVKTraceVulkanCallEnd();
 }
 
 MVK_PUBLIC_VULKAN_SYMBOL void vkCmdBindDescriptorSets2(
@@ -3016,6 +3040,29 @@ MVK_PUBLIC_VULKAN_SYMBOL void vkCmdPushDescriptorSetWithTemplate2(
 	MVKTraceVulkanCallEnd();
 }
 
+MVK_PUBLIC_VULKAN_SYMBOL VkResult vkMapMemory2(
+    VkDevice device,
+    const VkMemoryMapInfo* pMemoryMapInfo,
+    void** ppData) {
+
+    MVKTraceVulkanCallStart();
+    MVKDeviceMemory* mvkMem = (MVKDeviceMemory*)pMemoryMapInfo->memory;
+    VkResult rslt = mvkMem->map(pMemoryMapInfo, ppData);
+    MVKTraceVulkanCallEnd();
+    return rslt;
+}
+
+MVK_PUBLIC_VULKAN_SYMBOL VkResult vkUnmapMemory2(
+    VkDevice device,
+    const VkMemoryUnmapInfo* pMemoryUnmapInfo) {
+
+    MVKTraceVulkanCallStart();
+    MVKDeviceMemory* mvkMem = (MVKDeviceMemory*)pMemoryUnmapInfo->memory;
+    VkResult rslt = mvkMem->unmap(pMemoryUnmapInfo);
+    MVKTraceVulkanCallEnd();
+    return rslt;
+}
+
 MVK_PUBLIC_VULKAN_SYMBOL void vkCmdPushDescriptorSet(
     VkCommandBuffer                             commandBuffer,
     VkPipelineBindPoint                         pipelineBindPoint,
@@ -3073,18 +3120,6 @@ MVK_PUBLIC_VULKAN_SYMBOL VkResult vkCopyMemoryToImage(
 	return rslt;
 }
 
-MVK_PUBLIC_VULKAN_SYMBOL void  vkGetImageSubresourceLayout2(
-    VkDevice                                    device,
-    VkImage                                     image,
-    const VkImageSubresource2*                  pSubresource,
-    VkSubresourceLayout2*                       pLayout) {
-
-	MVKTraceVulkanCallStart();
-	MVKImage* mvkImg = (MVKImage*)image;
-	mvkImg->getSubresourceLayout(pSubresource, pLayout);
-	MVKTraceVulkanCallEnd();
-}
-
 MVK_PUBLIC_VULKAN_SYMBOL VkResult vkTransitionImageLayout(
     VkDevice                                    device,
     uint32_t                                    transitionCount,
@@ -3094,6 +3129,33 @@ MVK_PUBLIC_VULKAN_SYMBOL VkResult vkTransitionImageLayout(
 	// Metal lacks the concept of image layouts, so nothing to do.
 	MVKTraceVulkanCallEnd();
 	return VK_SUCCESS;
+}
+
+MVK_PUBLIC_VULKAN_SYMBOL void vkCmdSetLineStipple(
+	VkCommandBuffer                             commandBuffer,
+    uint32_t                                    lineStippleFactor,
+    uint16_t                                    lineStipplePattern) {
+
+	MVKTraceVulkanCallStart();
+	MVKTraceVulkanCallEnd();
+}
+
+MVK_PUBLIC_VULKAN_SYMBOL void vkCmdSetRenderingAttachmentLocations(
+    VkCommandBuffer                             commandBuffer,
+	const VkRenderingAttachmentLocationInfo*    pLocationInfo) {
+
+	MVKTraceVulkanCallStart();
+	MVKAddCmd(SetRenderingAttachmentLocations, commandBuffer, pLocationInfo);
+	MVKTraceVulkanCallEnd();
+}
+
+MVK_PUBLIC_VULKAN_SYMBOL void vkCmdSetRenderingInputAttachmentIndices(
+    VkCommandBuffer                             commandBuffer,
+	const VkRenderingInputAttachmentIndexInfo*  pInputAttachmentIndexInfo) {
+
+	MVKTraceVulkanCallStart();
+	MVKAddCmd(SetRenderingInputAttachmentIndices, commandBuffer, pInputAttachmentIndexInfo);
+	MVKTraceVulkanCallEnd();
 }
 
 
@@ -3248,11 +3310,20 @@ MVK_PUBLIC_VULKAN_CORE_ALIAS(vkEnumeratePhysicalDeviceGroups, KHR);
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdDrawIndexedIndirectCount, KHR);
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdDrawIndirectCount, KHR);
 
+
 #pragma mark -
 #pragma mark VK_KHR_dynamic_rendering extension
 
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdBeginRendering, KHR);
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdEndRendering, KHR);
+
+
+#pragma mark -
+#pragma mark VK_KHR_dynamic_rendering_local_read extension
+
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdSetRenderingAttachmentLocations, KHR);
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdSetRenderingInputAttachmentIndices, KHR);
+
 
 #pragma mark -
 #pragma mark VK_KHR_external_fence_capabilities extension
@@ -3322,6 +3393,12 @@ MVK_PUBLIC_VULKAN_CORE_ALIAS(vkGetPhysicalDeviceSparseImageFormatProperties2, KH
 
 
 #pragma mark -
+#pragma mark VK_KHR_line_rasterization extension
+
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdSetLineStipple, KHR);
+
+
+#pragma mark -
 #pragma mark VK_KHR_maintenance1 extension
 
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkTrimCommandPool, KHR);
@@ -3342,6 +3419,15 @@ MVK_PUBLIC_VULKAN_CORE_ALIAS(vkGetDeviceImageSparseMemoryRequirements, KHR);
 
 
 #pragma mark -
+#pragma mark VK_KHR_maintenance5 extension
+
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdBindIndexBuffer2, KHR);
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkGetRenderingAreaGranularity, KHR);
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkGetImageSubresourceLayout2, KHR);
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkGetDeviceImageSubresourceLayout, KHR);
+
+
+#pragma mark -
 #pragma mark VK_KHR_maintenance6 extension
 
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdBindDescriptorSets2, KHR);
@@ -3355,6 +3441,44 @@ MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdPushDescriptorSetWithTemplate2, KHR);
 
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkMapMemory2, KHR);
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkUnmapMemory2, KHR);
+
+
+#pragma mark -
+#pragma mark VK_KHR_present_wait extension
+
+MVK_PUBLIC_VULKAN_SYMBOL VkResult vkWaitForPresentKHR(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    uint64_t                                    presentId,
+    uint64_t                                    timeout) {
+
+	MVKTraceVulkanCallStart();
+	MVKSwapchain* mvkSC = (MVKSwapchain*)swapchain;
+	const VkPresentWait2InfoKHR waitInfo = {
+		.sType = VK_STRUCTURE_TYPE_PRESENT_WAIT_2_INFO_KHR,
+		.presentId = presentId,
+		.timeout = timeout,
+	};
+	VkResult rslt = mvkSC->waitForPresent(&waitInfo);
+	MVKTraceVulkanCallEnd();
+	return rslt;
+}
+
+
+#pragma mark -
+#pragma mark VK_KHR_present_wait2 extension
+
+MVK_PUBLIC_VULKAN_SYMBOL VkResult vkWaitForPresent2KHR(
+    VkDevice                                    device,
+    VkSwapchainKHR                              swapchain,
+    const VkPresentWait2InfoKHR*                pPresentWait2Info) {
+
+	MVKTraceVulkanCallStart();
+	MVKSwapchain* mvkSC = (MVKSwapchain*)swapchain;
+	VkResult rslt = mvkSC->waitForPresent(pPresentWait2Info);
+	MVKTraceVulkanCallEnd();
+	return rslt;
+}
 
 
 #pragma mark -
@@ -4004,9 +4128,10 @@ MVK_PUBLIC_VULKAN_SYMBOL void vkCmdSetExtraPrimitiveOverestimationSizeEXT(
 
 MVK_PUBLIC_VULKAN_SYMBOL void vkCmdSetLineRasterizationModeEXT(
     VkCommandBuffer                             commandBuffer,
-    VkLineRasterizationModeEXT                  lineRasterizationMode) {
+    VkLineRasterizationMode                     lineRasterizationMode) {
 
     MVKTraceVulkanCallStart();
+	MVKAddCmd(SetLineRasterizationMode, commandBuffer, lineRasterizationMode);
     MVKTraceVulkanCallEnd();
 }
 
@@ -4155,6 +4280,12 @@ MVK_PUBLIC_VULKAN_CORE_ALIAS(vkTransitionImageLayout, EXT);
 #pragma mark VK_EXT_host_query_reset extension
 
 MVK_PUBLIC_VULKAN_CORE_ALIAS(vkResetQueryPool, EXT);
+
+
+#pragma mark -
+#pragma mark VK_EXT_line_rasterization extension
+
+MVK_PUBLIC_VULKAN_CORE_ALIAS(vkCmdSetLineStipple, EXT);
 
 
 #pragma mark -

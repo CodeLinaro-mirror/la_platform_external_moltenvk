@@ -94,6 +94,9 @@ public:
 	/** VK_GOOGLE_display_timing - returns past presentation times */
 	VkResult getPastPresentationTiming(uint32_t *pCount, VkPastPresentationTimingGOOGLE *pPresentationTimings);
 
+	/** Waits for the swapchain present ID to meet or exceed the provided ID. */
+	VkResult waitForPresent(const VkPresentWait2InfoKHR* pWaitInfo);
+
 	/** Marks parts of the underlying CAMetalLayer as needing update. */
 	void setLayerNeedsDisplay(const VkPresentRegionKHR* pRegion);
 
@@ -120,6 +123,7 @@ protected:
     void markFrameInterval();
 	void beginPresentation(const MVKImagePresentInfo& presentInfo);
 	void endPresentation(const MVKImagePresentInfo& presentInfo, uint64_t beginPresentTime, uint64_t actualPresentTime = 0);
+	void notifyPresentComplete(const MVKImagePresentInfo& presentInfo);
 	void forceUnpresentedImageCompletion();
 
 	MVKSurface* _surface = nullptr;
@@ -130,6 +134,9 @@ protected:
 	VkPastPresentationTimingGOOGLE _presentTimingHistory[kMaxPresentationHistory];
 	std::atomic<uint64_t> _currentAcquisitionID = 0;
 	std::mutex _presentHistoryLock;
+	std::mutex _currentPresentIdMutex;
+	std::condition_variable _currentPresentIdCondVar;
+	uint64_t _currentPresentId = 0;
 	uint64_t _lastFrameTime = 0;
 	VkExtent2D _imageExtent = {0, 0};
 	std::atomic<uint32_t> _unpresentedImageCount = 0;

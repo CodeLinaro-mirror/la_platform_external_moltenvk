@@ -21,7 +21,7 @@
 
 #include "MVKCommonEnvironment.h"
 #include "mvk_vulkan.h"
-#include "mvk_private_api.h"
+#include "mvk_deprecated_api.h"
 #include "MVKLogging.h"
 #ifdef __cplusplus
 #include <string>
@@ -62,7 +62,7 @@
                                                                     0)
 
 /** Macro to determine the Vulkan version supported by MoltenVK. */
-#define MVK_VULKAN_API_VERSION					MVK_VULKAN_API_VERSION_HEADER(VK_API_VERSION_1_3)
+#define MVK_VULKAN_API_VERSION					MVK_VULKAN_API_VERSION_HEADER(VK_API_VERSION_1_4)
 
 /**
  * IOSurfaces are supported on macOS, and on iOS starting with iOS 11.
@@ -219,9 +219,9 @@ void mvkSetConfig(MVKConfiguration& dstMVKConfig, const MVKConfiguration& srcMVK
 #   define MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE    0
 #endif
 
-/** Set the fastMathEnabled Metal Compiler option. Set to always use fast math by default. */
+/** Set the fast math Metal Compiler options. By default, set to use fast math as determined by the shader. */
 #ifndef MVK_CONFIG_FAST_MATH_ENABLED
-#   define MVK_CONFIG_FAST_MATH_ENABLED    MVK_CONFIG_FAST_MATH_ALWAYS
+#   define MVK_CONFIG_FAST_MATH_ENABLED    MVK_CONFIG_FAST_MATH_ON_DEMAND
 #endif
 
 /** Set the logging level: */

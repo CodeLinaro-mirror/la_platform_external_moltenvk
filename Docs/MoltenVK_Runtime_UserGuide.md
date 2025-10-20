@@ -56,7 +56,7 @@ distribution package, see the main [`README.md`](../README.md) document in the `
 About **MoltenVK**
 ------------------
 
-**MoltenVK** is a layered implementation of [*Vulkan 1.3*](https://www.khronos.org/vulkan)
+**MoltenVK** is a layered implementation of [*Vulkan 1.4*](https://www.khronos.org/vulkan)
 graphics and compute functionality, that is built on Apple's [*Metal*](https://developer.apple.com/metal)
 graphics and compute framework on *macOS*, *iOS*, and *tvOS*. **MoltenVK** allows you to use *Vulkan*
 graphics and compute functionality to develop modern, cross-platform, high-performance graphical games
@@ -239,54 +239,77 @@ In addition to core *Vulkan* functionality, **MoltenVK**  also supports the foll
 - `VK_KHR_copy_commands2`
 - `VK_KHR_create_renderpass2`
 - `VK_KHR_dedicated_allocation`
+- `VK_KHR_deferred_host_operations`
 - `VK_KHR_depth_stencil_resolve`
 - `VK_KHR_descriptor_update_template`
 - `VK_KHR_device_group`
 - `VK_KHR_device_group_creation`
+- `VK_KHR_draw_indirect_count`
 - `VK_KHR_driver_properties`
 - `VK_KHR_dynamic_rendering`
+- `VK_KHR_dynamic_rendering_local_read`
+- `VK_KHR_external_fence`
+- `VK_KHR_external_fence_capabilities`
+- `VK_KHR_external_memory`
+- `VK_KHR_external_memory_capabilities`
+- `VK_KHR_external_semaphore`
+- `VK_KHR_external_semaphore_capabilities`
 - `VK_KHR_format_feature_flags2`
 - `VK_KHR_fragment_shader_barycentric`
   - *Requires Metal 2.2 on Mac or Metal 2.3 on iOS.*
 - `VK_KHR_get_memory_requirements2`
 - `VK_KHR_get_physical_device_properties2`
 - `VK_KHR_get_surface_capabilities2`
-- `VK_KHR_imageless_framebuffer`
-- `VK_EXT_image_2d_view_of_3d`
-  - *Requires `MVK_CONFIG_USE_MTLHEAP` to be active.*
+- `VK_KHR_global_priority`
 - `VK_KHR_image_format_list`
+- `VK_KHR_imageless_framebuffer`
 - `VK_KHR_incremental_present`
 - `VK_KHR_index_type_uint8`
+- `VK_KHR_line_rasterization`
 - `VK_KHR_load_store_op_none`
 - `VK_KHR_maintenance1`
 - `VK_KHR_maintenance2`
 - `VK_KHR_maintenance3`
 - `VK_KHR_maintenance4`
+- `VK_KHR_maintenance5`
 - `VK_KHR_maintenance6`
 - `VK_KHR_maintenance7`
+- `VK_KHR_maintenance8`
 - `VK_KHR_map_memory2`
 - `VK_KHR_multiview`
 - `VK_KHR_portability_subset`
+- `VK_KHR_present_id`
+- `VK_KHR_present_id2`
+- `VK_KHR_present_wait`
+- `VK_KHR_present_wait2`
 - `VK_KHR_push_descriptor`
 - `VK_KHR_relaxed_block_layout`
+- `VK_KHR_robustness2`
 - `VK_KHR_sampler_mirror_clamp_to_edge`
   - *Requires a Mac GPU or Apple family 7 GPU.*
 - `VK_KHR_sampler_ycbcr_conversion`
 - `VK_KHR_separate_depth_stencil_layouts`
+- `VK_KHR_shader_atomic_int64`
 - `VK_KHR_shader_draw_parameters`
 - `VK_KHR_shader_expect_assume`
 - `VK_KHR_shader_float_controls`
+- `VK_KHR_shader_float_controls2`
 - `VK_KHR_shader_float16_int8`
 - `VK_KHR_shader_integer_dot_product`
+- `VK_KHR_shader_maximal_reconvergence`
 - `VK_KHR_shader_non_semantic_info`
+- `VK_KHR_shader_quad_control`
+- `VK_KHR_shader_relaxed_extended_instruction`
 - `VK_KHR_shader_subgroup_extended_types`
   - *Requires Metal 2.1 on Mac or Metal 2.2 and Apple family 4 on iOS.*
 - `VK_KHR_shader_subgroup_rotate`
   - *Requires Metal 2.1 on Mac or Metal 2.2 and Apple family 4 on iOS.*
+- `VK_KHR_shader_subgroup_uniform_control_flow`
 - `VK_KHR_shader_terminate_invocation`
 - `VK_KHR_spirv_1_4`
 - `VK_KHR_storage_buffer_storage_class`
 - `VK_KHR_surface`
+- `VK_KHR_surface_protected_capabilities`
 - `VK_KHR_swapchain`
 - `VK_KHR_swapchain_mutable_format`
 - `VK_KHR_synchronization2`
@@ -320,15 +343,20 @@ In addition to core *Vulkan* functionality, **MoltenVK**  also supports the foll
 - `VK_EXT_external_memory_metal`
 - `VK_EXT_fragment_shader_interlock`
   - *Requires Metal 2.0 and Raster Order Groups.*
+- `VK_EXT_global_priority`
+- `VK_EXT_global_priority_query`
 - `VK_EXT_hdr_metadata`
   - *macOS only.*
 - `VK_EXT_headless_surface`
 - `VK_EXT_host_image_copy`
 - `VK_EXT_host_query_reset`
+- `VK_EXT_image_2d_view_of_3d`
+  - *Requires `MVK_CONFIG_USE_MTLHEAP` to be active.*
 - `VK_EXT_image_robustness`
 - `VK_EXT_index_type_uint8`
 - `VK_EXT_inline_uniform_block`
 - `VK_EXT_layer_settings`
+- `VK_EXT_line_rasterization`
 - `VK_EXT_load_store_op_none`
 - `VK_EXT_memory_budget`
   - *Requires Metal 2.0.*
@@ -360,25 +388,26 @@ In addition to core *Vulkan* functionality, **MoltenVK**  also supports the foll
 - `VK_EXT_surface_maintenance1`
 - `VK_EXT_swapchain_colorspace`
 - `VK_EXT_swapchain_maintenance1`
-- `VK_EXT_vertex_attribute_divisor`
 - `VK_EXT_texel_buffer_alignment`
   - *Requires Metal 2.0.*
 - `VK_EXT_texture_compression_astc_hdr`
   - *iOS and macOS, requires family 6 (A13) or better Apple GPU.*
 - `VK_EXT_tooling_info`
-- `VK_MVK_ios_surface`
-  - *Obsolete. Use `VK_EXT_metal_surface` instead.*
-- `VK_MVK_macos_surface`
-  - *Obsolete. Use `VK_EXT_metal_surface` instead.*
+- `VK_EXT_vertex_attribute_divisor`
 - `VK_AMD_gpu_shader_half_float`
 - `VK_AMD_negative_viewport_height`
 - `VK_AMD_shader_image_load_store_lod`
   - *Requires Apple GPU.*
 - `VK_AMD_shader_trinary_minmax`
   - *Requires Metal 2.1.*
+- `VK_GOOGLE_display_timing`
 - `VK_IMG_format_pvrtc`
   - *Requires Apple GPU.*
 - `VK_INTEL_shader_integer_functions2`
+- `VK_MVK_ios_surface`
+  - *Obsolete. Use `VK_EXT_metal_surface` instead.*
+- `VK_MVK_macos_surface`
+  - *Obsolete. Use `VK_EXT_metal_surface` instead.*
 - `VK_NV_fragment_shader_barycentric`
   - *Requires Metal 2.2 on Mac or Metal 2.3 on iOS.*
 

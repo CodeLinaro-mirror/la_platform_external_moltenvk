@@ -6,9 +6,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -17,7 +17,6 @@
  */
 
 #include "MVKPipeline.h"
-#include "MVKRenderPass.h"
 #include "MVKCommandBuffer.h"
 #include "MVKFoundation.h"
 #include "MVKOSExtensions.h"
@@ -235,7 +234,7 @@ void MVKPipeline::populateDescriptorSetBindingUse(MVKMTLFunction& mvkMTLFunc,
 }
 
 MVKPipeline::MVKPipeline(MVKDevice* device, MVKPipelineCache* pipelineCache, MVKPipelineLayout* layout,
-						 VkPipelineCreateFlags flags, MVKPipeline* parent) :
+						 VkPipelineCreateFlags2 flags, MVKPipeline* parent) :
 	MVKVulkanAPIDeviceObject(device),
 	_pipelineCache(pipelineCache),
 	_flags(flags),
@@ -254,11 +253,23 @@ MVKPipeline::MVKPipeline(MVKDevice* device, MVKPipelineCache* pipelineCache, MVK
 #pragma mark -
 #pragma mark MVKGraphicsPipeline
 
-// Set retrieve-only rendering state when pipeline is bound, as it's too late at draw command.
+// When pipeline is bound, set any rendering state that affects the Metal render pass,
+// as it's too late at draw command time.
 void MVKGraphicsPipeline::wasBound(MVKCommandEncoder* cmdEncoder) {
-	cmdEncoder->_renderingState.setPatchControlPoints(_tessInfo.patchControlPoints, false);
-	cmdEncoder->_renderingState.setSampleLocations(_sampleLocations.contents(), false);
-	cmdEncoder->_renderingState.setSampleLocationsEnable(_sampleLocationsEnable, false);
+	auto& cmdEncRS = cmdEncoder->_renderingState;
+	cmdEncRS.setPatchControlPoints(_tessInfo.patchControlPoints, false);
+	cmdEncRS.setSampleLocations(_sampleLocations.contents(), false);
+	cmdEncRS.setSampleLocationsEnable(_sampleLocationsEnable, false);
+	cmdEncRS.setPrimitiveTopology(_vkPrimitiveTopology, false);
+	if (_hasRasterInfo) {
+		cmdEncRS.setPolygonMode(_rasterInfo.polygonMode, false);
+	}
+	if (_hasRasterLineInfo) {
+		cmdEncRS.setLineRasterizationMode(_rasterLineInfo.lineRasterizationMode, false);
+	}
+	if (_hasRemappedAttachmentLocations) {
+		cmdEncoder->updateColorAttachmentLocations(_colorAttachmentLocations.contents());
+	}
 }
 
 void MVKGraphicsPipeline::getStages(MVKPiplineStages& stages) {
@@ -326,29 +337,29 @@ void MVKGraphicsPipeline::encode(MVKCommandEncoder* cmdEncoder, uint32_t stage) 
 			cmdEncoder->_depthStencilState.setDepthStencilState(_depthStencilInfo);
 
             // Rasterization
-			cmdEncoder->_renderingState.setPrimitiveTopology(_vkPrimitiveTopology, false);
-			cmdEncoder->_renderingState.setPrimitiveRestartEnable(_primitiveRestartEnable, false);
-			cmdEncoder->_renderingState.setBlendConstants(_blendConstants, false);
-			cmdEncoder->_renderingState.setDepthBounds({_depthStencilInfo.minDepthBounds, _depthStencilInfo.maxDepthBounds}, false);
-			cmdEncoder->_renderingState.setStencilReferenceValues(_depthStencilInfo);
-            cmdEncoder->_renderingState.setViewports(_viewports.contents(), 0, false);
-            cmdEncoder->_renderingState.setScissors(_scissors.contents(), 0, false);
+			auto& cmdEncRS = cmdEncoder->_renderingState;
+			cmdEncRS.setPrimitiveRestartEnable(_primitiveRestartEnable, false);
+			cmdEncRS.setBlendConstants(_blendConstants, false);
+			cmdEncRS.setDepthBounds({_depthStencilInfo.minDepthBounds, _depthStencilInfo.maxDepthBounds}, false);
+			cmdEncRS.setStencilReferenceValues(_depthStencilInfo);
+            cmdEncRS.setViewports(_viewports.contents(), 0, false);
+            cmdEncRS.setScissors(_scissors.contents(), 0, false);
 			if (_hasRasterInfo) {
-				cmdEncoder->_renderingState.setCullMode(_rasterInfo.cullMode, false);
-				cmdEncoder->_renderingState.setFrontFace(_rasterInfo.frontFace, false);
-				cmdEncoder->_renderingState.setPolygonMode(_rasterInfo.polygonMode, false);
-				cmdEncoder->_renderingState.setLineWidth(_rasterInfo.lineWidth, false);
-				cmdEncoder->_renderingState.setDepthBias(_rasterInfo);
-				cmdEncoder->_renderingState.setDepthClipEnable( !_rasterInfo.depthClampEnable, false );
+				cmdEncRS.setCullMode(_rasterInfo.cullMode, false);
+				cmdEncRS.setFrontFace(_rasterInfo.frontFace, false);
+				cmdEncRS.setLineWidth(_rasterInfo.lineWidth, false);
+				cmdEncRS.setDepthBias(_rasterInfo);
+				cmdEncRS.setDepthClipEnable( !_rasterInfo.depthClampEnable, false );
 			}
             break;
     }
 
-	cmdEncoder->_graphicsResourcesState.markOverriddenBufferIndexesDirty();
-    cmdEncoder->_graphicsResourcesState.bindSwizzleBuffer(_swizzleBufferIndex, _needsVertexSwizzleBuffer, _needsTessCtlSwizzleBuffer, _needsTessEvalSwizzleBuffer, _needsFragmentSwizzleBuffer);
-    cmdEncoder->_graphicsResourcesState.bindBufferSizeBuffer(_bufferSizeBufferIndex, _needsVertexBufferSizeBuffer, _needsTessCtlBufferSizeBuffer, _needsTessEvalBufferSizeBuffer, _needsFragmentBufferSizeBuffer);
-	cmdEncoder->_graphicsResourcesState.bindDynamicOffsetBuffer(_dynamicOffsetBufferIndex, _needsVertexDynamicOffsetBuffer, _needsTessCtlDynamicOffsetBuffer, _needsTessEvalDynamicOffsetBuffer, _needsFragmentDynamicOffsetBuffer);
-    cmdEncoder->_graphicsResourcesState.bindViewRangeBuffer(_viewRangeBufferIndex, _needsVertexViewRangeBuffer, _needsFragmentViewRangeBuffer);
+	auto& cmdEncGRS = cmdEncoder->_graphicsResourcesState;
+	cmdEncGRS.markOverriddenBufferIndexesDirty();
+    cmdEncGRS.bindSwizzleBuffer(_swizzleBufferIndex, _needsVertexSwizzleBuffer, _needsTessCtlSwizzleBuffer, _needsTessEvalSwizzleBuffer, _needsFragmentSwizzleBuffer);
+    cmdEncGRS.bindBufferSizeBuffer(_bufferSizeBufferIndex, _needsVertexBufferSizeBuffer, _needsTessCtlBufferSizeBuffer, _needsTessEvalBufferSizeBuffer, _needsFragmentBufferSizeBuffer);
+	cmdEncGRS.bindDynamicOffsetBuffer(_dynamicOffsetBufferIndex, _needsVertexDynamicOffsetBuffer, _needsTessCtlDynamicOffsetBuffer, _needsTessEvalDynamicOffsetBuffer, _needsFragmentDynamicOffsetBuffer);
+    cmdEncGRS.bindViewRangeBuffer(_viewRangeBufferIndex, _needsVertexViewRangeBuffer, _needsFragmentViewRangeBuffer);
 }
 
 static const char vtxCompilerType[] = "Vertex stage pipeline for tessellation";
@@ -458,11 +469,28 @@ static void warnIfBufferRobustnessEnabled(MVKPipeline* pipeline, const T* pCreat
 	}
 }
 
+static MVKShaderModule* getOrCreateShaderModule(MVKDevice* device, const VkPipelineShaderStageCreateInfo* pCreateInfo,
+                                                   bool& ownsShaderModule) {
+	if (pCreateInfo && pCreateInfo->module == VK_NULL_HANDLE) {
+		for (const auto* next = (VkBaseInStructure*)pCreateInfo->pNext; next; next = next->pNext) {
+			switch (next->sType) {
+				case VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO:
+					ownsShaderModule = true;
+					return new MVKShaderModule(device, (VkShaderModuleCreateInfo*)next);
+				default:
+					break;
+			}
+		}
+	}
+	ownsShaderModule = false;
+	return pCreateInfo ? (MVKShaderModule*)pCreateInfo->module : nullptr;
+}
+
 MVKGraphicsPipeline::MVKGraphicsPipeline(MVKDevice* device,
 										 MVKPipelineCache* pipelineCache,
 										 MVKPipeline* parent,
 										 const VkGraphicsPipelineCreateInfo* pCreateInfo) :
-	MVKPipeline(device, pipelineCache, (MVKPipelineLayout*)pCreateInfo->layout, pCreateInfo->flags, parent) {
+	MVKPipeline(device, pipelineCache, (MVKPipelineLayout*)pCreateInfo->layout, getPipelineCreateFlags(pCreateInfo), parent) {
 
 
 	// Extract dynamic state first, as it can affect many configurations.
@@ -472,6 +500,7 @@ MVKGraphicsPipeline::MVKGraphicsPipeline(MVKDevice* device,
 	const VkPipelineRenderingCreateInfo* pRendInfo = getRenderingCreateInfo(pCreateInfo);
 	_isRasterizing = !isRasterizationDisabled(pCreateInfo);
 	_isRasterizingColor = _isRasterizing && mvkHasColorAttachments(pRendInfo);
+	populateRenderingAttachmentInfo(pCreateInfo);
 
 	const VkPipelineCreationFeedbackCreateInfo* pFeedbackInfo = nullptr;
 	for (const auto* next = (VkBaseInStructure*)pCreateInfo->pNext; next; next = next->pNext) {
@@ -542,6 +571,11 @@ MVKGraphicsPipeline::MVKGraphicsPipeline(MVKDevice* device,
 		}
 	}
 
+	_vertexModule = getOrCreateShaderModule(device, pVertexSS, _ownsVertexModule);
+	_tessCtlModule = getOrCreateShaderModule(device, pTessCtlSS, _ownsTessCtlModule);
+	_tessEvalModule = getOrCreateShaderModule(device, pTessEvalSS, _ownsTessEvalModule);
+	_fragmentModule = getOrCreateShaderModule(device, pFragmentSS, _ownsFragmentModule);
+
 	warnIfBufferRobustnessEnabled(this, pVertexSS);
 	warnIfBufferRobustnessEnabled(this, pTessCtlSS);
 	warnIfBufferRobustnessEnabled(this, pTessEvalSS);
@@ -553,7 +587,7 @@ MVKGraphicsPipeline::MVKGraphicsPipeline(MVKDevice* device,
 	if (pTessCtlSS && pTessEvalSS) {
 		_isTessellationPipeline = true;
 
-		if (!getTessReflectionData(((MVKShaderModule*)pTessCtlSS->module)->getSPIRV(), pTessCtlSS->pName, ((MVKShaderModule*)pTessEvalSS->module)->getSPIRV(), pTessEvalSS->pName, reflectData, reflectErrorLog) ) {
+		if (!getTessReflectionData(_tessCtlModule->getSPIRV(), pTessCtlSS->pName, _tessEvalModule->getSPIRV(), pTessEvalSS->pName, reflectData, reflectErrorLog) ) {
 			setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to reflect tessellation shaders: %s", reflectErrorLog.c_str()));
 			return;
 		}
@@ -567,16 +601,6 @@ MVKGraphicsPipeline::MVKGraphicsPipeline(MVKDevice* device,
 	// Tessellation - must ignore allowed bad pTessellationState pointer if not tess pipeline
 	_outputControlPointCount = reflectData.numControlPoints;
 	mvkSetOrClear(&_tessInfo, _isTessellationPipeline ? pCreateInfo->pTessellationState : nullptr);
-
-	// Handles depth attachment being used as input attachment. However, it does not solve the issue when
-	// the pipeline is created without render pass (dynamic rendering) since we won't be able to know
-	// which resources will be used when rendering. Needs to be done before we do shaders
-	// Potential solution would be to generate 2 pipelines, one with the workaround for the Metal issue
-	// and one without it, and decide at bind time once we know the resources which one to use.
-	if (pCreateInfo->renderPass) {
-		MVKRenderSubpass* subpass = ((MVKRenderPass*)pCreateInfo->renderPass)->getSubpass(pCreateInfo->subpass);
-		_inputAttachmentIsDSAttachment = subpass->isInputAttachmentDepthStencilAttachment();
-	}
 
 	// Render pipeline state. Do this as early as possible, to fail fast if pipeline requires a fail on cache-miss.
 	initMTLRenderPipelineState(pCreateInfo, reflectData, pPipelineFB, pVertexSS, pVertexFB, pTessCtlSS, pTessCtlFB, pTessEvalSS, pTessEvalFB, pFragmentSS, pFragmentFB);
@@ -612,6 +636,18 @@ MVKGraphicsPipeline::MVKGraphicsPipeline(MVKDevice* device,
 
 	// Rasterization
 	_hasRasterInfo = mvkSetOrClear(&_rasterInfo, pCreateInfo->pRasterizationState);
+
+	VkPipelineRasterizationLineStateCreateInfo* pRasterizationLineState = nullptr;
+	for (const auto* next = (VkBaseInStructure*)pCreateInfo->pRasterizationState; next; next = next->pNext) {
+		switch (next->sType) {
+			case VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_LINE_STATE_CREATE_INFO:
+				pRasterizationLineState = (VkPipelineRasterizationLineStateCreateInfo*)next;
+				break;
+			default:
+				break;
+		}
+	}
+	_hasRasterLineInfo = mvkSetOrClear(&_rasterLineInfo, pRasterizationLineState);
 
 	// Must run after _isRasterizing and _dynamicState are populated
 	initSampleLocations(pCreateInfo);
@@ -655,6 +691,8 @@ static MVKRenderStateType getRenderStateType(VkDynamicState vkDynamicState) {
 		case VK_DYNAMIC_STATE_DEPTH_TEST_ENABLE:           return DepthTestEnable;
 		case VK_DYNAMIC_STATE_DEPTH_WRITE_ENABLE:          return DepthWriteEnable;
 		case VK_DYNAMIC_STATE_FRONT_FACE:                  return FrontFace;
+		case VK_DYNAMIC_STATE_LINE_RASTERIZATION_MODE_EXT: return LineRasterizationMode;
+		case VK_DYNAMIC_STATE_LINE_STIPPLE_ENABLE_EXT:     return LineStippleEnable;
 		case VK_DYNAMIC_STATE_LINE_WIDTH:                  return LineWidth;
 		case VK_DYNAMIC_STATE_LOGIC_OP_EXT:                return LogicOp;
 		case VK_DYNAMIC_STATE_LOGIC_OP_ENABLE_EXT:         return LogicOpEnable;
@@ -700,6 +738,38 @@ void MVKGraphicsPipeline::initDynamicState(const VkGraphicsPipelineCreateInfo* p
 
 		if (isDynamic) { _dynamicState.enable(dynStateType); }
 	}
+}
+
+void MVKGraphicsPipeline::populateRenderingAttachmentInfo(const VkGraphicsPipelineCreateInfo* pCreateInfo) {
+	const uint32_t* pColorAttLocs = nullptr;
+	if (pCreateInfo->renderPass) {
+		MVKRenderSubpass* subpass = ((MVKRenderPass*)pCreateInfo->renderPass)->getSubpass(pCreateInfo->subpass);
+		_inputAttachmentIsDSAttachment = subpass->isInputAttachmentDepthStencilAttachment();
+	} else {
+		for (const auto* next = (VkBaseInStructure*)pCreateInfo->pNext; next; next = next->pNext) {
+			switch (next->sType) {
+				case VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_LOCATION_INFO:
+					pColorAttLocs = ((VkRenderingAttachmentLocationInfo*)next)->pColorAttachmentLocations;
+					break;
+				case VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO: {
+					const auto* pRendInpAttIdxInfo = (VkRenderingInputAttachmentIndexInfo*)next;
+					_inputAttachmentIsDSAttachment = ((pRendInpAttIdxInfo->pDepthInputAttachmentIndex && *pRendInpAttIdxInfo->pDepthInputAttachmentIndex != VK_ATTACHMENT_UNUSED) ||
+													  (pRendInpAttIdxInfo->pStencilInputAttachmentIndex && *pRendInpAttIdxInfo->pStencilInputAttachmentIndex != VK_ATTACHMENT_UNUSED));
+					break;
+				}
+				default:
+					break;
+			}
+		}
+	}
+
+	// Map the attachment locations from the collection defined by VkRenderingAttachmentLocationInfo.
+	// If there is no VkRenderingAttachmentLocationInfo, this is just a basic copy to _colorAttachmentFormats.
+	auto attCnt = getRenderingCreateInfo(pCreateInfo)->colorAttachmentCount;
+	for (uint32_t attIdx = 0; attIdx < attCnt; attIdx++) {
+		_colorAttachmentLocations.push_back(pColorAttLocs ? pColorAttLocs[attIdx] : attIdx);
+	}
+	_hasRemappedAttachmentLocations = (attCnt && pColorAttLocs);
 }
 
 // Either returns an existing pipeline state or compiles a new one.
@@ -781,18 +851,18 @@ void MVKGraphicsPipeline::initMTLRenderPipelineState(const VkGraphicsPipelineCre
 		char* ptext = text;
 		size_t full_hash = 0;
 		const char* type = pTessCtlSS && pTessEvalSS ? "-tess" : "";
-		auto addShader = [&](const char* type, const VkPipelineShaderStageCreateInfo* ss) {
-			if (!ss) {
+		auto addShader = [&](const char* type, MVKShaderModule* module) {
+			if (!module) {
 				return;
 			}
-			size_t hash = reinterpret_cast<MVKShaderModule*>(ss->module)->getKey().codeHash;
+			size_t hash = module->getKey().codeHash;
 			full_hash = full_hash * 33 ^ hash;
 			ptext = std::min(ptext + snprintf(ptext, std::end(text) - ptext, "%s: %016zx\n", type, hash), std::end(text) - 1);
 		};
-		addShader(" VS", pVertexSS);
-		addShader("TCS", pTessCtlSS);
-		addShader("TES", pTessEvalSS);
-		addShader(" FS", pFragmentSS);
+		addShader(" VS", _vertexModule);
+		addShader("TCS", _tessCtlModule);
+		addShader("TES", _tessEvalModule);
+		addShader(" FS", _fragmentModule);
 		mkdir(dumpDir, 0755);
 		snprintf(filename, sizeof(filename), "%s/pipeline%s-%016zx.txt", dumpDir, type, full_hash);
 		FILE* file = fopen(filename, "w");
@@ -805,8 +875,8 @@ void MVKGraphicsPipeline::initMTLRenderPipelineState(const VkGraphicsPipelineCre
 	if (!isTessellationPipeline()) {
 		MTLRenderPipelineDescriptor* plDesc = newMTLRenderPipelineDescriptor(pCreateInfo, reflectData, pVertexSS, pVertexFB, pFragmentSS, pFragmentFB);	// temp retain
 		if (plDesc) {
-			const VkPipelineRenderingCreateInfo* pRendInfo = getRenderingCreateInfo(pCreateInfo);
-			if (pRendInfo && mvkIsMultiview(pRendInfo->viewMask)) {
+			auto viewMask = getRenderingCreateInfo(pCreateInfo)->viewMask;
+			if (mvkIsMultiview(viewMask)) {
 				// We need to adjust the step rate for per-instance attributes to account for the
 				// extra instances needed to render all views. But, there's a problem: vertex input
 				// descriptions are static pipeline state. If we need multiple passes, and some have
@@ -814,8 +884,9 @@ void MVKGraphicsPipeline::initMTLRenderPipelineState(const VkGraphicsPipelineCre
 				// for these passes. We'll need to make a pipeline for every pass view count we can see
 				// in the render pass. This really sucks.
 				std::unordered_set<uint32_t> viewCounts;
-				for (uint32_t passIdx = 0; passIdx < getDevice()->getMultiviewMetalPassCount(pRendInfo->viewMask); ++passIdx) {
-					viewCounts.insert(getDevice()->getViewCountInMetalPass(pRendInfo->viewMask, passIdx));
+				auto passCnt = getDevice()->getMultiviewMetalPassCount(viewMask);
+				for (uint32_t passIdx = 0; passIdx < passCnt; ++passIdx) {
+					viewCounts.insert(getDevice()->getViewCountInMetalPass(viewMask, passIdx));
 				}
 				auto count = viewCounts.cbegin();
 				adjustVertexInputForMultiview(plDesc.vertexDescriptor, pCreateInfo->pVertexInputState, *count);
@@ -885,7 +956,7 @@ MTLRenderPipelineDescriptor* MVKGraphicsPipeline::newMTLRenderPipelineDescriptor
 
 	SPIRVShaderOutputs vtxOutputs;
 	std::string errorLog;
-	if (!getShaderOutputs(((MVKShaderModule*)pVertexSS->module)->getSPIRV(), spv::ExecutionModelVertex, pVertexSS->pName, vtxOutputs, errorLog) ) {
+	if (!getShaderOutputs(_vertexModule->getSPIRV(), spv::ExecutionModelVertex, pVertexSS->pName, vtxOutputs, errorLog) ) {
 		setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to get vertex outputs: %s", errorLog.c_str()));
 		return nil;
 	}
@@ -924,7 +995,7 @@ MTLComputePipelineDescriptor* MVKGraphicsPipeline::newMTLTessVertexStageDescript
 
 	SPIRVShaderInputs tcInputs;
 	std::string errorLog;
-	if (!getShaderInputs(((MVKShaderModule*)pTessCtlSS->module)->getSPIRV(), spv::ExecutionModelTessellationControl, pTessCtlSS->pName, tcInputs, errorLog) ) {
+	if (!getShaderInputs(_tessCtlModule->getSPIRV(), spv::ExecutionModelTessellationControl, pTessCtlSS->pName, tcInputs, errorLog) ) {
 		setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to get tessellation control inputs: %s", errorLog.c_str()));
 		return nil;
 	}
@@ -1066,11 +1137,11 @@ MTLComputePipelineDescriptor* MVKGraphicsPipeline::newMTLTessControlStageDescrip
 	SPIRVShaderOutputs vtxOutputs;
 	SPIRVShaderInputs teInputs;
 	std::string errorLog;
-	if (!getShaderOutputs(((MVKShaderModule*)pVertexSS->module)->getSPIRV(), spv::ExecutionModelVertex, pVertexSS->pName, vtxOutputs, errorLog) ) {
+	if (!getShaderOutputs(_vertexModule->getSPIRV(), spv::ExecutionModelVertex, pVertexSS->pName, vtxOutputs, errorLog) ) {
 		setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to get vertex outputs: %s", errorLog.c_str()));
 		return nil;
 	}
-	if (!getShaderInputs(((MVKShaderModule*)pTessEvalSS->module)->getSPIRV(), spv::ExecutionModelTessellationEvaluation, pTessEvalSS->pName, teInputs, errorLog) ) {
+	if (!getShaderInputs(_tessEvalModule->getSPIRV(), spv::ExecutionModelTessellationEvaluation, pTessEvalSS->pName, teInputs, errorLog) ) {
 		setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to get tessellation evaluation inputs: %s", errorLog.c_str()));
 		return nil;
 	}
@@ -1110,11 +1181,11 @@ MTLRenderPipelineDescriptor* MVKGraphicsPipeline::newMTLTessRasterStageDescripto
 	SPIRVShaderOutputs tcOutputs, teOutputs;
 	SPIRVShaderInputs teInputs;
 	std::string errorLog;
-	if (!getShaderOutputs(((MVKShaderModule*)pTessCtlSS->module)->getSPIRV(), spv::ExecutionModelTessellationControl, pTessCtlSS->pName, tcOutputs, errorLog) ) {
+	if (!getShaderOutputs(_tessCtlModule->getSPIRV(), spv::ExecutionModelTessellationControl, pTessCtlSS->pName, tcOutputs, errorLog) ) {
 		setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to get tessellation control outputs: %s", errorLog.c_str()));
 		return nil;
 	}
-	if (!getShaderOutputs(((MVKShaderModule*)pTessEvalSS->module)->getSPIRV(), spv::ExecutionModelTessellationEvaluation, pTessEvalSS->pName, teOutputs, errorLog) ) {
+	if (!getShaderOutputs(_tessEvalModule->getSPIRV(), spv::ExecutionModelTessellationEvaluation, pTessEvalSS->pName, teOutputs, errorLog) ) {
 		setConfigurationResult(reportError(VK_ERROR_INITIALIZATION_FAILED, "Failed to get tessellation evaluation outputs: %s", errorLog.c_str()));
 		return nil;
 	}
@@ -1173,7 +1244,7 @@ bool MVKGraphicsPipeline::addVertexShaderToPipeline(MTLRenderPipelineDescriptor*
 	shaderConfig.options.mslOptions.disable_rasterization = !_isRasterizing;
     addVertexInputToShaderConversionConfig(shaderConfig, pCreateInfo);
 
-	MVKMTLFunction func = getMTLFunction(shaderConfig, pVertexSS, pVertexFB, "Vertex");
+	MVKMTLFunction func = getMTLFunction(shaderConfig, pVertexSS, pVertexFB, _vertexModule, "Vertex");
 	id<MTLFunction> mtlFunc = func.getMTLFunction();
 	plDesc.vertexFunction = mtlFunc;
 	if ( !mtlFunc ) { return false; }
@@ -1248,7 +1319,7 @@ bool MVKGraphicsPipeline::addVertexShaderToPipeline(MTLComputePipelineDescriptor
 	MVKMTLFunction func;
 	for (uint32_t i = 0; i < sizeof(indexTypes)/sizeof(indexTypes[0]); i++) {
 		shaderConfig.options.mslOptions.vertex_index_type = indexTypes[i];
-		func = getMTLFunction(shaderConfig, pVertexSS, pVertexFB, "Vertex");
+		func = getMTLFunction(shaderConfig, pVertexSS, pVertexFB, _vertexModule, "Vertex");
 		if ( !func.getMTLFunction() ) { return false; }
 
 		pVtxFunctions[i] = func;
@@ -1308,7 +1379,7 @@ bool MVKGraphicsPipeline::addTessCtlShaderToPipeline(MTLComputePipelineDescripto
 	addPrevStageOutputToShaderConversionConfig(shaderConfig, vtxOutputs);
 	addNextStageInputToShaderConversionConfig(shaderConfig, teInputs);
 
-	MVKMTLFunction func = getMTLFunction(shaderConfig, pTessCtlSS, pTessCtlFB, "Tessellation control");
+	MVKMTLFunction func = getMTLFunction(shaderConfig, pTessCtlSS, pTessCtlFB, _tessCtlModule, "Tessellation control");
 	id<MTLFunction> mtlFunc = func.getMTLFunction();
 	if ( !mtlFunc ) { return false; }
 	plDesc.computeFunction = mtlFunc;
@@ -1370,7 +1441,7 @@ bool MVKGraphicsPipeline::addTessEvalShaderToPipeline(MTLRenderPipelineDescripto
 	shaderConfig.options.mslOptions.disable_rasterization = !_isRasterizing;
 	addPrevStageOutputToShaderConversionConfig(shaderConfig, tcOutputs);
 
-	MVKMTLFunction func = getMTLFunction(shaderConfig, pTessEvalSS, pTessEvalFB, "Tessellation evaluation");
+	MVKMTLFunction func = getMTLFunction(shaderConfig, pTessEvalSS, pTessEvalFB, _tessEvalModule, "Tessellation evaluation");
 	id<MTLFunction> mtlFunc = func.getMTLFunction();
 	plDesc.vertexFunction = mtlFunc;	// Yeah, you read that right. Tess. eval functions are a kind of vertex function in Metal.
 	if ( !mtlFunc ) { return false; }
@@ -1440,7 +1511,7 @@ bool MVKGraphicsPipeline::addFragmentShaderToPipeline(MTLRenderPipelineDescripto
 		}
 		addPrevStageOutputToShaderConversionConfig(shaderConfig, shaderOutputs);
 
-		MVKMTLFunction func = getMTLFunction(shaderConfig, pFragmentSS, pFragmentFB, "Fragment");
+		MVKMTLFunction func = getMTLFunction(shaderConfig, pFragmentSS, pFragmentFB, _fragmentModule, "Fragment");
 		id<MTLFunction> mtlFunc = func.getMTLFunction();
 		plDesc.fragmentFunction = mtlFunc;
 		if ( !mtlFunc ) { return false; }
@@ -1479,11 +1550,11 @@ bool MVKGraphicsPipeline::addVertexInputToPipeline(T* inputDesc,
 												   const VkPipelineVertexInputStateCreateInfo* pVI,
 												   const SPIRVToMSLConversionConfiguration& shaderConfig) {
     // Collect extension structures
-    VkPipelineVertexInputDivisorStateCreateInfoEXT* pVertexInputDivisorState = nullptr;
+    VkPipelineVertexInputDivisorStateCreateInfo* pVertexInputDivisorState = nullptr;
 	for (const auto* next = (VkBaseInStructure*)pVI->pNext; next; next = next->pNext) {
         switch (next->sType) {
-        case VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT:
-            pVertexInputDivisorState = (VkPipelineVertexInputDivisorStateCreateInfoEXT*)next;
+        case VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO:
+            pVertexInputDivisorState = (VkPipelineVertexInputDivisorStateCreateInfo*)next;
             break;
         default:
             break;
@@ -1527,7 +1598,7 @@ bool MVKGraphicsPipeline::addVertexInputToPipeline(T* inputDesc,
     if (pVertexInputDivisorState) {
         uint32_t vbdCnt = pVertexInputDivisorState->vertexBindingDivisorCount;
         for (uint32_t i = 0; i < vbdCnt; i++) {
-            const VkVertexInputBindingDivisorDescriptionEXT* pVKVB = &pVertexInputDivisorState->pVertexBindingDivisors[i];
+            const VkVertexInputBindingDivisorDescription* pVKVB = &pVertexInputDivisorState->pVertexBindingDivisors[i];
             if (shaderConfig.isVertexBufferUsed(pVKVB->binding)) {
                 uint32_t vbIdx = getMetalBufferIndexForVertexAttributeBinding(pVKVB->binding);
                 if ((NSUInteger)inputDesc.layouts[vbIdx].stepFunction == MTLStepFunctionPerInstance ||
@@ -1720,14 +1791,18 @@ void MVKGraphicsPipeline::addFragmentOutputToPipeline(MTLRenderPipelineDescripto
 
 	// Color attachments - must ignore bad pColorBlendState pointer if rasterization is disabled or subpass has no color attachments
     uint32_t caCnt = 0;
-    if (_isRasterizingColor && pRendInfo && pCreateInfo->pColorBlendState) {
+    if (_isRasterizingColor && pCreateInfo->pColorBlendState) {
         for (uint32_t caIdx = 0; caIdx < pCreateInfo->pColorBlendState->attachmentCount; caIdx++) {
             const VkPipelineColorBlendAttachmentState* pCA = &pCreateInfo->pColorBlendState->pAttachments[caIdx];
 
+			uint32_t caLoc = _colorAttachmentLocations[caIdx];
+			if (caLoc == VK_ATTACHMENT_UNUSED) { continue; }
+
 			MTLPixelFormat mtlPixFmt = getPixelFormats()->getMTLPixelFormat(pRendInfo->pColorAttachmentFormats[caIdx]);
-			MTLRenderPipelineColorAttachmentDescriptor* colorDesc = plDesc.colorAttachments[caIdx];
+			MTLRenderPipelineColorAttachmentDescriptor* colorDesc = plDesc.colorAttachments[caLoc];
             colorDesc.pixelFormat = mtlPixFmt;
-            if (colorDesc.pixelFormat == MTLPixelFormatRGB9E5Float) {
+
+			if (colorDesc.pixelFormat == MTLPixelFormatRGB9E5Float) {
                 // Metal doesn't allow disabling individual channels for a RGB9E5 render target.
                 // Either all must be disabled or none must be disabled.
                 // TODO: Use framebuffer fetch to support this anyway. I don't understand why Apple doesn't
@@ -1760,12 +1835,20 @@ void MVKGraphicsPipeline::addFragmentOutputToPipeline(MTLRenderPipelineDescripto
 
     // Depth & stencil attachment formats
 	MVKPixelFormats* pixFmts = getPixelFormats();
-
 	MTLPixelFormat mtlDepthPixFmt = pixFmts->getMTLPixelFormat(pRendInfo->depthAttachmentFormat);
-	if (pixFmts->isDepthFormat(mtlDepthPixFmt)) { plDesc.depthAttachmentPixelFormat = mtlDepthPixFmt; }
-
 	MTLPixelFormat mtlStencilPixFmt = pixFmts->getMTLPixelFormat(pRendInfo->stencilAttachmentFormat);
-	if (pixFmts->isStencilFormat(mtlStencilPixFmt)) { plDesc.stencilAttachmentPixelFormat = mtlStencilPixFmt; }
+
+	if (pixFmts->isDepthFormat(mtlDepthPixFmt)) {
+		plDesc.depthAttachmentPixelFormat = mtlDepthPixFmt;
+	} else if (pixFmts->isDepthFormat(mtlStencilPixFmt)) {
+		plDesc.depthAttachmentPixelFormat = mtlStencilPixFmt;
+	}
+
+	if (pixFmts->isStencilFormat(mtlStencilPixFmt)) {
+		plDesc.stencilAttachmentPixelFormat = mtlStencilPixFmt;
+	} else if (pixFmts->isStencilFormat(mtlDepthPixFmt)) {
+		plDesc.stencilAttachmentPixelFormat = mtlDepthPixFmt;
+	}
 
 	// In Vulkan, it's perfectly valid to render without any attachments. In Metal, if that
 	// isn't supported, and we have no attachments, then we have to add a dummy attachment.
@@ -1815,6 +1898,7 @@ void MVKGraphicsPipeline::initShaderConversionConfig(SPIRVToMSLConversionConfigu
     }
 
 	auto& mtlFeats = getMetalFeatures();
+	auto& mvkCfg = getMVKConfig();
     shaderConfig.options.mslOptions.msl_version = mtlFeats.mslVersion;
     shaderConfig.options.mslOptions.texel_buffer_texture_width = mtlFeats.maxTextureDimension;
     shaderConfig.options.mslOptions.r32ui_linear_texture_alignment = (uint32_t)_device->getVkFormatTexelBufferAlignment(VK_FORMAT_R32_UINT, this);
@@ -1871,17 +1955,19 @@ void MVKGraphicsPipeline::initShaderConversionConfig(SPIRVToMSLConversionConfigu
 	}
 
 	shaderConfig.options.mslOptions.ios_support_base_vertex_instance = mtlFeats.baseVertexInstanceDrawing;
-	shaderConfig.options.mslOptions.texture_1D_as_2D = getMVKConfig().texture1DAs2D;
-    shaderConfig.options.mslOptions.enable_point_size_builtin = isRenderingPoints(pCreateInfo) || reflectData.pointMode;
+	shaderConfig.options.mslOptions.texture_1D_as_2D = mvkCfg.texture1DAs2D;
+	shaderConfig.options.mslOptions.enable_point_size_builtin = isRenderingPoints(pCreateInfo) || reflectData.pointMode;
+	shaderConfig.options.mslOptions.enable_point_size_default = shaderConfig.options.mslOptions.enable_point_size_builtin;
+	shaderConfig.options.mslOptions.default_point_size = 1.0f; // See VK_KHR_maintenance5
 	shaderConfig.options.mslOptions.enable_frag_depth_builtin = pixFmts->isDepthFormat(pixFmts->getMTLPixelFormat(pRendInfo->depthAttachmentFormat));
 	shaderConfig.options.mslOptions.enable_frag_stencil_ref_builtin = pixFmts->isStencilFormat(pixFmts->getMTLPixelFormat(pRendInfo->stencilAttachmentFormat));
-    shaderConfig.options.shouldFlipVertexY = getMVKConfig().shaderConversionFlipVertexY;
+    shaderConfig.options.shouldFlipVertexY = mvkCfg.shaderConversionFlipVertexY;
     shaderConfig.options.shouldFixupClipSpace = isDepthClipNegativeOneToOne(pCreateInfo);
     shaderConfig.options.mslOptions.swizzle_texture_samples = _fullImageViewSwizzle && !mtlFeats.nativeTextureSwizzle;
     shaderConfig.options.mslOptions.tess_domain_origin_lower_left = pTessDomainOriginState && pTessDomainOriginState->domainOrigin == VK_TESSELLATION_DOMAIN_ORIGIN_LOWER_LEFT;
     shaderConfig.options.mslOptions.multiview = mvkIsMultiview(pRendInfo->viewMask);
     shaderConfig.options.mslOptions.multiview_layered_rendering = getPhysicalDevice()->canUseInstancingForMultiview();
-    shaderConfig.options.mslOptions.view_index_from_device_index = mvkAreAllFlagsEnabled(pCreateInfo->flags, VK_PIPELINE_CREATE_VIEW_INDEX_FROM_DEVICE_INDEX_BIT);
+    shaderConfig.options.mslOptions.view_index_from_device_index = mvkAreAllFlagsEnabled(_flags, VK_PIPELINE_CREATE_2_VIEW_INDEX_FROM_DEVICE_INDEX_BIT);
 	shaderConfig.options.mslOptions.replace_recursive_inputs = mvkOSVersionIsAtLeast(14.0, 17.0, 1.0);
 #if MVK_MACOS
     shaderConfig.options.mslOptions.emulate_subgroups = !mtlFeats.simdPermute;
@@ -2096,7 +2182,7 @@ void MVKGraphicsPipeline::addPrevStageOutputToShaderConversionConfig(SPIRVToMSLC
 bool MVKGraphicsPipeline::isRenderingPoints(const VkGraphicsPipelineCreateInfo* pCreateInfo) {
 	return ((pCreateInfo->pInputAssemblyState &&
 			 (pCreateInfo->pInputAssemblyState->topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST)) ||
-			(pCreateInfo->pRasterizationState && 
+			(pCreateInfo->pRasterizationState &&
 			 (pCreateInfo->pRasterizationState->polygonMode == VK_POLYGON_MODE_POINT) &&
 			 !isDynamicState(PolygonMode)));
 }
@@ -2128,12 +2214,12 @@ bool MVKGraphicsPipeline::isDepthClipNegativeOneToOne(const VkGraphicsPipelineCr
 MVKMTLFunction MVKGraphicsPipeline::getMTLFunction(SPIRVToMSLConversionConfiguration& shaderConfig,
 												   const VkPipelineShaderStageCreateInfo* pShaderStage,
 												   VkPipelineCreationFeedback* pStageFB,
+												   MVKShaderModule* pShaderModule,
 												   const char* pStageName) {
-	MVKShaderModule* shaderModule = (MVKShaderModule*)pShaderStage->module;
-	MVKMTLFunction func = shaderModule->getMTLFunction(&shaderConfig,
-													   pShaderStage->pSpecializationInfo,
-													   this,
-													   pStageFB);
+	MVKMTLFunction func = pShaderModule->getMTLFunction(&shaderConfig,
+													    pShaderStage->pSpecializationInfo,
+													    this,
+													    pStageFB);
 	if ( !func.getMTLFunction() ) {
 		if (shouldFailOnPipelineCompileRequired()) {
 			setConfigurationResult(VK_PIPELINE_COMPILE_REQUIRED);
@@ -2162,6 +2248,10 @@ MVKGraphicsPipeline::~MVKGraphicsPipeline() {
 		[_mtlTessVertexStageIndex32State release];
 		[_mtlTessControlStageState release];
 		[_mtlPipelineState release];
+		if (_ownsVertexModule) delete _vertexModule;
+		if (_ownsTessCtlModule) delete _tessCtlModule;
+		if (_ownsTessEvalModule) delete _tessEvalModule;
+		if (_ownsFragmentModule) delete _fragmentModule;
 	}
 }
 
@@ -2185,9 +2275,9 @@ MVKComputePipeline::MVKComputePipeline(MVKDevice* device,
 									   MVKPipelineCache* pipelineCache,
 									   MVKPipeline* parent,
 									   const VkComputePipelineCreateInfo* pCreateInfo) :
-	MVKPipeline(device, pipelineCache, (MVKPipelineLayout*)pCreateInfo->layout, pCreateInfo->flags, parent) {
+	MVKPipeline(device, pipelineCache, (MVKPipelineLayout*)pCreateInfo->layout, getPipelineCreateFlags(pCreateInfo), parent) {
 
-	_allowsDispatchBase = mvkAreAllFlagsEnabled(pCreateInfo->flags, VK_PIPELINE_CREATE_DISPATCH_BASE_BIT);
+	_allowsDispatchBase = mvkAreAllFlagsEnabled(_flags, VK_PIPELINE_CREATE_2_DISPATCH_BASE_BIT);
 
 	if (isUsingMetalArgumentBuffers()) { _descriptorBindingUse.resize(_descriptorSetCount); }
 
@@ -2277,9 +2367,12 @@ MVKMTLFunction MVKComputePipeline::getMTLFunction(const VkComputePipelineCreateI
     const VkPipelineShaderStageCreateInfo* pSS = &pCreateInfo->stage;
     if ( !mvkAreAllFlagsEnabled(pSS->stage, VK_SHADER_STAGE_COMPUTE_BIT) ) { return MVKMTLFunctionNull; }
 
+	_module = getOrCreateShaderModule(_device, pSS, _ownsModule);
+
 	warnIfBufferRobustnessEnabled(this, pSS);
 
 	auto& mtlFeats = getMetalFeatures();
+	auto& mvkCfg = getMVKConfig();
     SPIRVToMSLConversionConfiguration shaderConfig;
 	shaderConfig.options.entryPointName = pCreateInfo->stage.pName;
 	shaderConfig.options.entryPointStage = spv::ExecutionModelGLCompute;
@@ -2289,7 +2382,7 @@ MVKMTLFunction MVKComputePipeline::getMTLFunction(const VkComputePipelineCreateI
 	shaderConfig.options.mslOptions.swizzle_texture_samples = _fullImageViewSwizzle && !mtlFeats.nativeTextureSwizzle;
 	shaderConfig.options.mslOptions.texture_buffer_native = mtlFeats.textureBuffers;
 	shaderConfig.options.mslOptions.dispatch_base = _allowsDispatchBase;
-	shaderConfig.options.mslOptions.texture_1D_as_2D = getMVKConfig().texture1DAs2D;
+	shaderConfig.options.mslOptions.texture_1D_as_2D = mvkCfg.texture1DAs2D;
     shaderConfig.options.mslOptions.fixed_subgroup_size = mvkIsAnyFlagEnabled(pSS->flags, VK_PIPELINE_SHADER_STAGE_CREATE_ALLOW_VARYING_SUBGROUP_SIZE_BIT) ? 0 : mtlFeats.maxSubgroupSize;
 
 	bool useMetalArgBuff = isUsingMetalArgumentBuffers();
@@ -2327,7 +2420,7 @@ MVKMTLFunction MVKComputePipeline::getMTLFunction(const VkComputePipelineCreateI
     shaderConfig.options.mslOptions.indirect_params_buffer_index = _indirectParamsIndex.stages[kMVKShaderStageCompute];
 	shaderConfig.options.mslOptions.replace_recursive_inputs = mvkOSVersionIsAtLeast(14.0, 17.0, 1.0);
 
-    MVKMTLFunction func = ((MVKShaderModule*)pSS->module)->getMTLFunction(&shaderConfig, pSS->pSpecializationInfo, this, pStageFB);
+    MVKMTLFunction func = _module->getMTLFunction(&shaderConfig, pSS->pSpecializationInfo, this, pStageFB);
 	if ( !func.getMTLFunction() ) {
 		if (shouldFailOnPipelineCompileRequired()) {
 			setConfigurationResult(VK_PIPELINE_COMPILE_REQUIRED);
@@ -2358,6 +2451,7 @@ bool MVKComputePipeline::usesPhysicalStorageBufferAddressesCapability(MVKShaderS
 MVKComputePipeline::~MVKComputePipeline() {
 	@synchronized (getMTLDevice()) {
 		[_mtlPipelineState release];
+		if (_ownsModule) delete _module;
 	}
 }
 
@@ -2614,7 +2708,7 @@ void MVKPipelineCache::markDirty() {
 }
 
 VkResult MVKPipelineCache::mergePipelineCaches(uint32_t srcCacheCount, const VkPipelineCache* pSrcCaches) {
-	if (_isExternallySynchronized) {
+	if (!_isMergeInternallySynchronized) {
 		return mergePipelineCachesImpl(srcCacheCount, pSrcCaches);
 	} else {
 		lock_guard<mutex> lock(_shaderCacheLock);
@@ -2645,6 +2739,7 @@ namespace SPIRV_CROSS_NAMESPACE {
 				opt.msl_version,
 				opt.texel_buffer_texture_width,
 				opt.r32ui_linear_texture_alignment,
+				opt.r32ui_alignment_constant_id,
 				opt.swizzle_buffer_index,
 				opt.indirect_params_buffer_index,
 				opt.shader_output_buffer_index,
@@ -2660,8 +2755,9 @@ namespace SPIRV_CROSS_NAMESPACE {
 				opt.device_index,
 				opt.enable_frag_output_mask,
 				opt.additional_fixed_sample_mask,
-				opt.fixed_subgroup_size,
 				opt.enable_point_size_builtin,
+				opt.enable_point_size_default,
+				opt.default_point_size,
 				opt.enable_frag_depth_builtin,
 				opt.enable_frag_stencil_ref_builtin,
 				opt.disable_rasterization,
@@ -2674,6 +2770,8 @@ namespace SPIRV_CROSS_NAMESPACE {
 				opt.dispatch_base,
 				opt.texture_1D_as_2D,
 				opt.argument_buffers,
+				opt.argument_buffers_tier,
+				opt.runtime_array_rich_descriptor,
 				opt.enable_base_index_zero,
 				opt.pad_fragment_output_components,
 				opt.ios_support_base_vertex_instance,
@@ -2684,7 +2782,6 @@ namespace SPIRV_CROSS_NAMESPACE {
 				opt.texture_buffer_native,
 				opt.force_active_argument_buffer_resources,
 				opt.pad_argument_buffer_resources,
-				opt.argument_buffers_tier,
 				opt.force_native_arrays,
 				opt.enable_clip_distance_user_varying,
 				opt.multi_patch_workgroup,
@@ -2693,15 +2790,18 @@ namespace SPIRV_CROSS_NAMESPACE {
 				opt.arrayed_subpass_input,
 				opt.ios_use_simdgroup_functions,
 				opt.emulate_subgroups,
+				opt.fixed_subgroup_size,
 				opt.vertex_index_type,
 				opt.force_sample_rate_shading,
 				opt.manual_helper_invocation_updates,
 				opt.check_discarded_frag_stores,
+				opt.sample_dref_lod_array_as_grad,
+				opt.readwrite_texture_fences,
+				opt.replace_recursive_inputs,
+				opt.agx_manual_cube_grad_fixup,
 				opt.force_fragment_with_side_effects_execution,
 				opt.input_attachment_is_ds_attachment,
-				opt.sample_dref_lod_array_as_grad,
-				opt.replace_recursive_inputs,
-				opt.agx_manual_cube_grad_fixup);
+				opt.auto_disable_rasterization);
 	}
 
 	template<class Archive>
@@ -2772,7 +2872,7 @@ namespace mvk {
 				ep.workgroupSize.width,
 				ep.workgroupSize.height,
 				ep.workgroupSize.depth,
-				ep.supportsFastMath);
+				ep.fpFastMathFlags);
 	}
 
 	template<class Archive>
@@ -2810,17 +2910,19 @@ namespace mvk {
 	}
 
 	template<class Archive>
-	void serialize(Archive & archive, SPIRVToMSLConversionConfiguration& ctx) {
-		archive(ctx.options,
-				ctx.shaderInputs,
-				ctx.shaderOutputs,
-				ctx.resourceBindings,
-				ctx.discreteDescriptorSets);
+	void serialize(Archive & archive, SPIRVToMSLConversionConfiguration& cfg) {
+		archive(cfg.options,
+				cfg.shaderInputs,
+				cfg.shaderOutputs,
+				cfg.resourceBindings,
+				cfg.discreteDescriptorSets,
+				cfg.dynamicBufferDescriptors);
 	}
 
 	template<class Archive>
 	void serialize(Archive & archive, SPIRVToMSLConversionResultInfo& scr) {
 		archive(scr.entryPoint,
+				scr.specializationMacros,
 				scr.isRasterizationDisabled,
 				scr.isPositionInvariant,
 				scr.needsSwizzleBuffer,
@@ -2831,8 +2933,7 @@ namespace mvk {
 				scr.needsInputThreadgroupMem,
 				scr.needsDispatchBaseBuffer,
 				scr.needsViewRangeBuffer,
-				scr.usesPhysicalStorageBufferAddressesCapability,
-				scr.specializationMacros);
+				scr.usesPhysicalStorageBufferAddressesCapability);
 	}
 
 	template<class Archive>
@@ -2863,7 +2964,9 @@ void serialize(Archive & archive, MVKCompressor<C>& comp) {
 MVKPipelineCache::MVKPipelineCache(MVKDevice* device, const VkPipelineCacheCreateInfo* pCreateInfo) :
 	MVKVulkanAPIDeviceObject(device),
 	_isExternallySynchronized(getEnabledPipelineCreationCacheControlFeatures().pipelineCreationCacheControl &&
-							  mvkIsAnyFlagEnabled(pCreateInfo->flags, VK_PIPELINE_CACHE_CREATE_EXTERNALLY_SYNCHRONIZED_BIT)) {
+							  mvkIsAnyFlagEnabled(pCreateInfo->flags, VK_PIPELINE_CACHE_CREATE_EXTERNALLY_SYNCHRONIZED_BIT)),
+	_isMergeInternallySynchronized(getEnabledPipelineCreationCacheControlFeatures().pipelineCreationCacheControl &&
+								   mvkIsAnyFlagEnabled(pCreateInfo->flags, VK_PIPELINE_CACHE_CREATE_INTERNALLY_SYNCHRONIZED_MERGE_BIT_KHR)) {
 
 	readData(pCreateInfo);
 }
@@ -2942,3 +3045,54 @@ MVKComputePipelineCompiler::~MVKComputePipelineCompiler() {
 	[_mtlComputePipelineState release];
 }
 
+
+#pragma mark -
+#pragma mark Support functions
+
+// Validate that the Cereal Archive covers the entire struct, to ensure consistency and accuracy.
+// Ideally this should be a compile-time validation, but that doesn't appear to be possible, so we
+// validate by serializing a struct and seeing if all the bytes of the struct have been serialized.
+// Since sizeof() also includes gaps between the struct members, padByteCnt can be used to specify
+// the amount of padding in the struct. This function works best for simple data structs. Care should
+// be taken with structs that contain strings or collections, as streaming size depends on contents,
+// and potentially an upgrade to the stdc++ library. Changes to basic struct sizes may affect the
+// padding of aggregate structs that contain them.
+template<class C>
+static size_t mvkValidateCerealArchiveSize(size_t padByteCnt = 0) {
+	int64_t missingBytes = 0;
+#if MVK_USE_CEREAL
+	mvk::countbuf cb;
+	ostream outStream(&cb);
+	cereal::BinaryOutputArchive writer(outStream);
+	C obj = C();
+	writer(obj);
+	missingBytes = int64_t(sizeof(C)) - int64_t(cb.buffSize + padByteCnt);
+	if (missingBytes) {
+		printf("[MVK-BUILD-ERROR] Cereal serialization Archive for %s is not completely defined."
+			   " Missing %lld bytes. Struct size is %zu (including an expected %zu bytes of padding)"
+			   " and Cereal Archive size is %zu. The Cereal Archive definition may be missing members.\n",
+			   mvk::getTypeName(&obj).c_str(), missingBytes, sizeof(C), padByteCnt, cb.buffSize);
+	}
+#endif
+	return missingBytes;
+}
+
+void mvkValidateCeralArchiveDefinitions() {
+	[[maybe_unused]] size_t missingBytes = 0;
+	missingBytes += mvkValidateCerealArchiveSize<SPIRV_CROSS_NAMESPACE::CompilerMSL::Options>(5);
+	missingBytes += mvkValidateCerealArchiveSize<SPIRV_CROSS_NAMESPACE::MSLShaderInterfaceVariable>();
+	missingBytes += mvkValidateCerealArchiveSize<SPIRV_CROSS_NAMESPACE::MSLResourceBinding>();
+	missingBytes += mvkValidateCerealArchiveSize<SPIRV_CROSS_NAMESPACE::MSLConstexprSampler>();
+	missingBytes += mvkValidateCerealArchiveSize<mvk::SPIRVWorkgroupSizeDimension>(3);
+	missingBytes += mvkValidateCerealArchiveSize<mvk::SPIRVEntryPoint>(20);						// Contains string
+	missingBytes += mvkValidateCerealArchiveSize<mvk::SPIRVToMSLConversionOptions>(23);			// Contains string
+	missingBytes += mvkValidateCerealArchiveSize<mvk::MSLShaderInterfaceVariable>(3);
+	missingBytes += mvkValidateCerealArchiveSize<mvk::MSLResourceBinding>(2);
+	missingBytes += mvkValidateCerealArchiveSize<mvk::DescriptorBinding>();
+	missingBytes += mvkValidateCerealArchiveSize<mvk::SPIRVToMSLConversionConfiguration>(103);	// Contains collection
+	missingBytes += mvkValidateCerealArchiveSize<mvk::SPIRVToMSLConversionResultInfo>(41);		// Contains collection
+	missingBytes += mvkValidateCerealArchiveSize<mvk::MSLSpecializationMacroInfo>(22);			// Contains string
+	missingBytes += mvkValidateCerealArchiveSize<MVKShaderModuleKey>();
+	missingBytes += mvkValidateCerealArchiveSize<MVKCompressor<std::string>>(20);				// Contains collection
+	assert(missingBytes == 0 && "Cereal Archive definitions incomplete. See previous logged errors.");
+}
